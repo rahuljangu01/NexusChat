@@ -1,10 +1,11 @@
-// server/server.js (UPDATED & ENHANCED)
+// server/server.js (UPDATED & ENHANCED FOR SINGLE SERVICE DEPLOYMENT)
 
 // =================================================================
 // IMPORTS
 // =================================================================
 // Core Node Modules
 const http = require("http");
+const path = require('path'); // Path module is required
 
 // Third-party Libraries
 const express = require("express");
@@ -114,6 +115,21 @@ app.use("/api/groups", groupRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/status", statusRoutes);
 app.use("/api/calls", callRoutes);
+
+
+// <<< --- YEH NAYA CODE ADD HUA HAI --- >>>
+// =================================================================
+// SERVE NEXT.JS FRONTEND IN PRODUCTION
+// =================================================================
+if (process.env.NODE_ENV === 'production') {
+    // client/out folder se static files serve karo (Next.js yahan build karta hai)
+    app.use(express.static(path.join(__dirname, '../client/out')));
+
+    // Agar koi request API route se match nahi hoti, toh index.html bhej do
+    app.get('*', (req, res) => {
+        res.sendFile(path.join(__dirname, '../client/out', 'index.html'));
+    });
+}
 
 
 // =================================================================

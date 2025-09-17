@@ -117,8 +117,9 @@ const Dashboard = () => {
   const navItems = [
     { path: '/dashboard', label: 'Chats', icon: LayoutDashboard },
     { path: '/dashboard/status', label: 'Status', icon: CircleDashed },
-    { path: '/dashboard/calls', label: 'Calls', icon: Phone },
+    
     { path: '/dashboard/groups', label: 'Groups', icon: Users },
+    { path: '/dashboard/calls', label: 'Calls', icon: Phone },
   ];
   
   const isLinkActive = (path) => {
