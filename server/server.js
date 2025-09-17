@@ -122,15 +122,11 @@ app.use("/api/calls", callRoutes);
 // SERVE NEXT.JS FRONTEND IN PRODUCTION
 // =================================================================
 if (process.env.NODE_ENV === 'production') {
-    // client/out folder se static files serve karo (Next.js yahan build karta hai)
-    app.use(express.static(path.join(__dirname, '../client/out')));
-
-    // Agar koi request API route se match nahi hoti, toh index.html bhej do
+    app.use(express.static(path.join(__dirname, '../client/build'))); // <-- Changed to '../client/build'
     app.get('*', (req, res) => {
-        res.sendFile(path.join(__dirname, '../client/out', 'index.html'));
+        res.sendFile(path.join(__dirname, '../client/build', 'index.html')); // <-- Changed to '../client/build'
     });
 }
-
 
 // =================================================================
 // ERROR HANDLING MIDDLEWARE
