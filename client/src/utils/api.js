@@ -1,8 +1,11 @@
-// client/src/utils/api.js (FULL & COMPLETE CODE)
+// client/src/utils/api.js (FINAL & CORRECTED FOR DEPLOYMENT)
 
 import axios from "axios";
 
-const API_URL = process.env.REACT_APP_API_URL || "http://localhost:5000/api";
+// <<< --- THIS IS THE ONLY CHANGE --- >>>
+// This relative path works for both local development (with proxy)
+// and for production on Render.
+const API_URL = "/api";
 
 const api = axios.create({
   baseURL: API_URL,
