@@ -1,4 +1,4 @@
-// server/server.js (FINAL & DEPLOYMENT-READY)
+// server/server.js (FINAL & DEPLOYMENT-READY WITH CORS DEBUGGING)
 
 // =================================================================
 // IMPORTS
@@ -44,7 +44,9 @@ connectDB();
 
 // Setup Allowed Origins for CORS
 const allowedOrigins = (process.env.CLIENT_URL || "http://localhost:3000").split(',');
-console.log("Allowed CORS Origins:", allowedOrigins); // For debugging on Render
+
+// This will show up in your Render logs and tell us EXACTLY what the server thinks the CLIENT_URL is.
+console.log(`[CORS CONFIG] Allowed Origins: ${JSON.stringify(allowedOrigins)}`);
 
 // CORS options that will be used by both Express and Socket.IO
 const corsOptions = {
@@ -53,6 +55,7 @@ const corsOptions = {
     if (!origin || allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
+      console.error(`[CORS ERROR] Origin not allowed: ${origin}`); // Log the blocked origin
       callback(new Error('This origin is not allowed by CORS'));
     }
   },
