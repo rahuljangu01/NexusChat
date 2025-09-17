@@ -1,11 +1,11 @@
-// server/server.js (UPDATED & ENHANCED FOR SINGLE SERVICE DEPLOYMENT)
+// server/server.js (FINAL & DEPLOYMENT-READY)
 
 // =================================================================
 // IMPORTS
 // =================================================================
 // Core Node Modules
 const http = require("http");
-const path = require('path'); // Path module is required
+const path = require('path');
 
 // Third-party Libraries
 const express = require("express");
@@ -43,14 +43,25 @@ const server = http.createServer(app);
 connectDB();
 
 // Setup Allowed Origins for CORS
-const allowedOrigins = (process.env.CLIENT_URL || "http://localhost:3000,http://localhost:5001").split(',');
+const allowedOrigins = (process.env.CLIENT_URL || "http://localhost:3000").split(',');
+console.log("Allowed CORS Origins:", allowedOrigins); // For debugging on Render
 
-// Initialize Socket.IO
-const io = socketIo(server, {
-  cors: {
-    origin: allowedOrigins,
-    methods: ["GET", "POST"],
+// CORS options that will be used by both Express and Socket.IO
+const corsOptions = {
+  origin: function (origin, callback) {
+    // allow requests with no origin (like mobile apps or curl requests) or from our list
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('This origin is not allowed by CORS'));
+    }
   },
+  credentials: true,
+};
+
+// Initialize Socket.IO with the same CORS options
+const io = socketIo(server, {
+  cors: corsOptions,
 });
 
 // Make `io` instance accessible to our controllers
@@ -68,16 +79,8 @@ app.use((req, res, next) => {
 // CORE MIDDLEWARE
 // =================================================================
 
-// 1. CORS Configuration - Allow requests only from specified origins
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('This origin is not allowed by CORS'));
-    }
-  }
-}));
+// 1. CORS Configuration - Use the options defined above
+app.use(cors(corsOptions));
 
 // 2. Security Headers with Helmet
 app.use(helmet());
@@ -117,16 +120,17 @@ app.use("/api/status", statusRoutes);
 app.use("/api/calls", callRoutes);
 
 
-// <<< --- YEH NAYA CODE ADD HUA HAI --- >>>
 // =================================================================
-// SERVE NEXT.JS FRONTEND IN PRODUCTION
+// SERVE REACT FRONTEND IN PRODUCTION
 // =================================================================
 if (process.env.NODE_ENV === 'production') {
-    app.use(express.static(path.join(__dirname, '../client/build'))); // <-- Changed to '../client/build'
+    app.use(express.static(path.join(__dirname, '../client/build')));
+
     app.get('*', (req, res) => {
-        res.sendFile(path.join(__dirname, '../client/build', 'index.html')); // <-- Changed to '../client/build'
+        res.sendFile(path.join(__dirname, '../client/build', 'index.html'));
     });
 }
+
 
 // =================================================================
 // ERROR HANDLING MIDDLEWARE
@@ -151,6 +155,6 @@ app.use((err, req, res, next) => {
 // =================================================================
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
-  console.log(`🚀 Server is running on http://localhost:${PORT}`);
+  console.log(`🚀 Server is running on port ${PORT}`);
   console.log(`🔌 Socket.IO server is attached and listening.`);
 });
