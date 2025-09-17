@@ -1,11 +1,10 @@
-// client/src/utils/api.js (FINAL & CORRECTED FOR DEPLOYMENT)
+// client/src/utils/api.js (FINAL HARDCODED FIX)
 
 import axios from "axios";
 
-// <<< --- THIS IS THE ONLY CHANGE --- >>>
-// This relative path works for both local development (with proxy)
-// and for production on Render.
-const API_URL = "/api";
+// <<< --- THIS IS THE HARDCODED FIX FOR THE API URL --- >>>
+// It points directly to your live Render service.
+const API_URL = "https://nexuschat-kmk8.onrender.com/api";
 
 const api = axios.create({
   baseURL: API_URL,

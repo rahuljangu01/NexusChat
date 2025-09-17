@@ -1,9 +1,8 @@
-// server/server.js (FINAL & DEPLOYMENT-READY WITH CORS DEBUGGING)
+// server/server.js (FINAL HARDCODED FIX)
 
 // =================================================================
 // IMPORTS
 // =================================================================
-// Core Node Modules
 const http = require("http");
 const path = require('path');
 
@@ -42,20 +41,20 @@ const server = http.createServer(app);
 // Connect to MongoDB Database
 connectDB();
 
-// Setup Allowed Origins for CORS
-const allowedOrigins = (process.env.CLIENT_URL || "http://localhost:3000").split(',');
+// <<< --- THIS IS THE HARDCODED FIX FOR CORS --- >>>
+const allowedOrigins = [
+  "http://localhost:3000", 
+  "https://nexuschat-kmk8.onrender.com" // Your live frontend URL
+];
 
-// This will show up in your Render logs and tell us EXACTLY what the server thinks the CLIENT_URL is.
-console.log(`[CORS CONFIG] Allowed Origins: ${JSON.stringify(allowedOrigins)}`);
+console.log(`[CORS DEBUG] Forcing allowed origins: ${JSON.stringify(allowedOrigins)}`);
 
-// CORS options that will be used by both Express and Socket.IO
 const corsOptions = {
   origin: function (origin, callback) {
-    // allow requests with no origin (like mobile apps or curl requests) or from our list
     if (!origin || allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
-      console.error(`[CORS ERROR] Origin not allowed: ${origin}`); // Log the blocked origin
+      console.error(`[CORS BLOCK] Origin not allowed: ${origin}`);
       callback(new Error('This origin is not allowed by CORS'));
     }
   },
