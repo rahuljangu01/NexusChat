@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "target": "ES6",
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "client/src/lib/utils.js", "client/src/components/ui/use-toast.js", "client/src/components/ui/use-mobile.jsx", "client/src/components/ui/toggle-group.jsx", "client/src/components/ui/toaster.jsx", "client/src/components/ui/table.jsx", "client/src/components/ui/switch.jsx", "client/src/components/ui/sonner.jsx", "client/src/components/ui/slider.jsx", "client/src/components/ui/sidebar.jsx", "client/src/components/ui/select.jsx", "client/src/components/ui/resizable.jsx", "client/src/components/ui/radio-group.jsx", "client/src/components/ui/progress.jsx", "client/src/components/ui/popover.jsx", "client/src/components/ui/pagination.jsx", "client/src/components/ui/navigation-menu.jsx", "client/src/components/ui/menubar.jsx", "client/src/components/ui/input-otp.jsx", "client/src/components/ui/hover-card.jsx", "client/src/components/ui/form.jsx", "client/src/components/ui/drawer.jsx", "client/src/components/ui/context-menu.jsx", "client/src/components/ui/command.jsx", "client/src/components/ui/collapsible.jsx", "client/src/components/ui/checkbox.jsx", "client/src/components/ui/chart.jsx", "client/src/components/ui/carousel.jsx", "client/src/components/ui/calendar.jsx", "client/src/components/ui/breadcrumb.jsx", "client/src/components/ui/aspect-ratio.jsx", "client/src/components/ui/alert.jsx", "client/src/components/ui/alert-dialog.jsx", "client/src/components/ui/accordion.jsx"],
+  "exclude": ["node_modules"]
+}

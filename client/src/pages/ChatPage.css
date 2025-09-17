@@ -1,0 +1,43 @@
+/* client/src/pages/ChatPage.css (UPDATED FOR STATIC BACKGROUND) */
+
+.chat-page-container {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+.chat-messages-container {
+  overflow-y: auto;
+  position: relative; /* Yeh zaroori hai */
+}
+
+/* <<< --- YEH NAYA CODE STATIC BACKGROUND KE LIYE HAI --- >>> */
+/* Purana hearts/animation code poori tarah se hata diya gaya hai */
+.static-pattern-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: url('../assets/chat-background-pattern.svg');
+  background-size: 350px;
+  opacity: 0.03; /* Pattern ko bahut halka rakhein */
+  z-index: 0;
+  pointer-events: none;
+}
+/* <<< --- NAYA CODE YAHAN KHATAM HOTA HAI --- >>> */
+
+
+.message-bubble.sent {
+  border-bottom-right-radius: 4px;
+}
+.message-bubble.received {
+  border-bottom-left-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar { width: 6px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background-color: rgba(129, 140, 248, 0.3); border-radius: 20px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background-color: rgba(129, 140, 248, 0.5); }

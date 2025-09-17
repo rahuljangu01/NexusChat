@@ -1,0 +1,39 @@
+/* client/src/pages/AuthPage.css */
+
+.aurora-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  z-index: 0;
+}
+
+@keyframes aurora {
+  0% { transform: translate(-50%, -50%) rotate(0deg) scale(1.5); }
+  50% { transform: translate(-50%, -50%) rotate(180deg) scale(2); }
+  100% { transform: translate(-50%, -50%) rotate(360deg) scale(1.5); }
+}
+
+.aurora-shape {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 120vw;
+  height: 120vh;
+  border-radius: 9999px;
+  mix-blend-mode: overlay;
+  filter: blur(100px) opacity(0.5);
+  animation: aurora 25s linear infinite;
+}
+
+.aurora-shape-1 {
+  background-image: radial-gradient(circle, #4f46e5, transparent 50%); /* Indigo */
+  animation-duration: 22s;
+}
+.aurora-shape-2 {
+  background-image: radial-gradient(circle, #ec4899, transparent 60%); /* Pink */
+  animation-duration: 28s;
+  animation-delay: -7s;
+}

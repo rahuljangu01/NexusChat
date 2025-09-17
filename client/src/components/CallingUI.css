@@ -1,0 +1,115 @@
+/* client/src/components/CallingUI.css (FULL & COMPLETE CODE) */
+
+/* Ringing UI Styles */
+.call-container {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3rem 1rem;
+  background: radial-gradient(circle, #1e293b, #0d1117 80%);
+  color: white;
+}
+
+.avatar-pulsate {
+  animation: pulse-ring 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse-ring {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+.call-button {
+  height: 4.5rem;
+  width: 4.5rem;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease-in-out;
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.4);
+}
+
+.call-button:hover {
+  transform: scale(1.1);
+}
+
+.call-button svg {
+  height: 2rem;
+  width: 2rem;
+}
+
+/* Video Grid Styles */
+.video-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1rem;
+  width: 100%;
+  height: 100%;
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+.video-participant-container {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background-color: #1e293b;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+}
+
+.participant-name-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 0.5rem 0.75rem;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: white;
+}
+
+/* Audio Call Blurred Background */
+.audio-call-background {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-size: cover;
+  background-position: center;
+  filter: blur(20px) brightness(0.4);
+  transform: scale(1.1);
+}
+
+/* Speaking Indicator Animation */
+.speaking-indicator {
+  position: absolute;
+  inset: -6px;
+  border-radius: 9999px;
+  border: 3px solid transparent;
+  transition: border-color 0.2s ease-out;
+}
+
+.speaking-indicator.speaking {
+  animation: talking-glow 1.5s ease-in-out infinite;
+}
+
+@keyframes talking-glow {
+  0% { box-shadow: 0 0 5px #34d399, 0 0 10px #34d399, 0 0 15px #34d399; }
+  50% { box-shadow: 0 0 15px #6ee7b7, 0 0 25px #6ee7b7, 0 0 35px #6ee7b7; }
+  100% { box-shadow: 0 0 5px #34d399, 0 0 10px #34d399, 0 0 15px #34d399; }
+}
