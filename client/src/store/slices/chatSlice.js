@@ -1,3 +1,4 @@
+// client/src/store/chatSlice.js (FULL CODE)
 
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import { getMessages as apiGetMessages } from "../../utils/api";
@@ -33,6 +34,15 @@ const chatSlice = createSlice({
         state.messages[chatId].push(message);
       }
     },
+    updateMessage: (state, action) => {
+        const { chatId, tempId, finalMessage } = action.payload;
+        if (state.messages[chatId]) {
+            const messageIndex = state.messages[chatId].findIndex(m => m._id === tempId);
+            if (messageIndex !== -1) {
+                state.messages[chatId][messageIndex] = finalMessage;
+            }
+        }
+    },
     updateSentMessagesStatus: (state, action) => {
       const { chatPartnerId, status } = action.payload;
       if (state.messages[chatPartnerId]) {
@@ -66,5 +76,5 @@ const chatSlice = createSlice({
   },
 });
 
-export const { addMessage, updateSentMessagesStatus } = chatSlice.actions;
+export const { addMessage, updateMessage, updateSentMessagesStatus } = chatSlice.actions;
 export default chatSlice.reducer;

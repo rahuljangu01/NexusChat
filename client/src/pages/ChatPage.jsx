@@ -354,7 +354,7 @@ const ChatPage = () => {
     };
 
     useEffect(() => {
-        if (currentUser && userId) {
+        if (currentUser && userId && chatUserConnection) {
             dispatch(getMessages(userId));
             socketService.emit('mark-messages-read', { chatUserId: userId });
             dispatch(clearUnreadCount({ chatId: userId })); 
@@ -383,7 +383,7 @@ const ChatPage = () => {
                 socketService.off("user-stop-typing", handleUserStopTyping);
             };
         }
-    }, [userId, dispatch, currentUser, leaveCall]);
+    }, [userId, dispatch, currentUser, leaveCall, chatUserConnection]);
     
     useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [activeChatMessages]);
 
