@@ -1,7 +1,7 @@
-// client/src/pages/ChatPage.jsx (FINAL - With All Fixes - Full Code)
+// client/src/pages/ChatPage.jsx (FINAL - SYNTAX FIX)
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom"; 
+import { useParams, useNavigate } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import { ArrowLeft, Send, Paperclip, MoreVertical, Video, Phone, UserX, Smile, PhoneIncoming, PhoneOutgoing, PhoneMissed, Check, CheckCheck, Pin, Trash2, Forward, X as CloseIcon, Search, Wallpaper, ImagePlus } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -67,36 +67,14 @@ const WallpaperDialog = ({ open, onOpenChange, connectionId, currentWallpaper, o
                     <DialogDescription>Select a new background for this chat.</DialogDescription>
                 </DialogHeader>
                 <div className="grid grid-cols-3 gap-3 py-4 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
-                    <div 
-                        className="relative group aspect-[9/16] flex flex-col items-center justify-center rounded-lg bg-slate-800 hover:bg-slate-700 border-2 border-dashed border-slate-600 cursor-pointer transition-colors"
-                        onClick={() => fileInputRef.current.click()}
-                    >
-                        {isUploading ? (
-                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
-                        ) : (
-                            <>
-                                <ImagePlus className="h-8 w-8 text-slate-400 group-hover:text-indigo-400" />
-                                <p className="text-xs text-center mt-2 text-slate-400">From Gallery</p>
-                            </>
-                        )}
+                    <div className="relative group aspect-[9/16] flex flex-col items-center justify-center rounded-lg bg-slate-800 hover:bg-slate-700 border-2 border-dashed border-slate-600 cursor-pointer transition-colors" onClick={() => fileInputRef.current.click()}>
+                        {isUploading ? (<div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>) : (<><ImagePlus className="h-8 w-8 text-slate-400 group-hover:text-indigo-400" /><p className="text-xs text-center mt-2 text-slate-400">From Gallery</p></>)}
                         <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*" />
                     </div>
-
                     {wallpapers.map((wallpaper) => (
                         <div key={wallpaper.name} className="relative group aspect-[9/16] cursor-pointer" onClick={() => handleSelectWallpaper(wallpaper.url)}>
-                            {wallpaper.url === '' ? (
-                                <div className="w-full h-full rounded-lg bg-[#0d1117] flex items-center justify-center p-2 border border-slate-700">
-                                    <p className="text-xs text-center text-slate-400">Default Pattern</p>
-                                </div>
-                            ) : (
-                                <img src={wallpaper.url} alt={wallpaper.name} className="object-cover w-full h-full rounded-lg" />
-                            )}
-                            <div className={`absolute inset-0 rounded-lg transition-all 
-                                ${currentWallpaper === wallpaper.url 
-                                    ? 'border-4 border-indigo-500 ring-2 ring-indigo-500/50' 
-                                    : 'group-hover:ring-4 group-hover:ring-white/50'
-                                }`}
-                            />
+                            {wallpaper.url === '' ? (<div className="w-full h-full rounded-lg bg-[#0d1117] flex items-center justify-center p-2 border border-slate-700"><p className="text-xs text-center text-slate-400">Default Pattern</p></div>) : (<img src={wallpaper.url} alt={wallpaper.name} className="object-cover w-full h-full rounded-lg" />)}
+                            <div className={`absolute inset-0 rounded-lg transition-all ${currentWallpaper === wallpaper.url ? 'border-4 border-indigo-500 ring-2 ring-indigo-500/50' : 'group-hover:ring-4 group-hover:ring-white/50'}`}/>
                             <p className="absolute bottom-0 left-0 right-0 py-1 text-center text-xs bg-black/50 text-white">{wallpaper.name}</p>
                         </div>
                     ))}
@@ -126,30 +104,18 @@ const ForwardDialog = ({ connections, onForward, currentUser }) => {
                 <DialogDescription>Select a contact to forward the message(s).</DialogDescription>
             </DialogHeader>
             <div className="py-4">
-                <div className="relative mb-4">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                    <Input placeholder="Search connections..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10 bg-slate-800 border-slate-600" />
-                </div>
+                <div className="relative mb-4"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" /><Input placeholder="Search connections..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10 bg-slate-800 border-slate-600" /></div>
                 <div className="max-h-[50vh] overflow-y-auto space-y-2 custom-scrollbar -mr-4 pr-4">
                     {filteredConnections.length > 0 ? filteredConnections.map(conn => {
                         const otherUser = conn.users.find(u => u._id !== currentUser.id);
                         if (!otherUser) return null;
-                        return (
-                            <div key={otherUser._id} onClick={() => onForward(otherUser._id)} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-800 cursor-pointer">
-                                <Avatar className="h-10 w-10">
-                                    <AvatarImage src={otherUser.profilePhotoUrl} />
-                                    <AvatarFallback>{otherUser.name.charAt(0)}</AvatarFallback>
-                                </Avatar>
-                                <span>{otherUser.name}</span>
-                            </div>
-                        )
+                        return (<div key={otherUser._id} onClick={() => onForward(otherUser._id)} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-800 cursor-pointer"><Avatar className="h-10 w-10"><AvatarImage src={otherUser.profilePhotoUrl} /><AvatarFallback>{otherUser.name.charAt(0)}</AvatarFallback></Avatar><span>{otherUser.name}</span></div>)
                     }) : <p className="text-center text-slate-500 py-4">No connections found.</p>}
                 </div>
             </div>
         </DialogContent>
     );
 };
-
 
 const ChatPage = () => {
     const { userId } = useParams();
@@ -159,10 +125,7 @@ const ChatPage = () => {
     const { user: currentUser } = useSelector((state) => state.auth);
     const { connections } = useSelector((state) => state.connections);
     const activeChatMessages = useSelector((state) => state.chat.messages[userId] || []);
-    
-    const chatUserConnection = useSelector((state) => 
-        state.connections.connections.find(c => c.users.some(u => u._id === userId))
-    );
+    const chatUserConnection = useSelector((state) => state.connections.connections.find(c => c.users.some(u => u._id === userId)));
     const chatUser = chatUserConnection?.users.find(u => u._id === userId);
 
     const [isTyping, setIsTyping] = useState(false);
@@ -171,12 +134,10 @@ const ChatPage = () => {
     const [isUploading, setIsUploading] = useState(false);
     const [isInfoPanelOpen, setInfoPanelOpen] = useState(false);
     const [isWallpaperDialogOpen, setIsWallpaperDialogOpen] = useState(false);
-    
     const [selectionMode, setSelectionMode] = useState(false);
     const [selectedMessages, setSelectedMessages] = useState(new Set());
     const [pinnedMessage, setPinnedMessage] = useState(null);
     const [isForwarding, setIsForwarding] = useState(false);
-    
     const [callState, setCallState] = useState('idle');
     const [callType, setCallType] = useState('video');
     const [stream, setStream] = useState(null);
@@ -339,7 +300,7 @@ const ChatPage = () => {
     };
 
     useEffect(() => {
-          if (currentUser && userId) {
+        if (currentUser && userId) {
             dispatch(getMessages(userId));
             socketService.emit('mark-messages-read', { chatUserId: userId });
             dispatch(fetchConnections(currentUser.id));
@@ -373,14 +334,12 @@ const ChatPage = () => {
         const tempId = Date.now().toString();
         const optimisticMessage = { _id: tempId, sender: { _id: currentUser.id, name: currentUser.name, profilePhotoUrl: currentUser.profilePhotoUrl }, receiver: { _id: userId }, content: message.trim(), messageType: 'text', createdAt: new Date().toISOString(), status: 'sent', _type: 'message' };
         dispatch(addMessage({ chatId: userId, message: optimisticMessage }));
-        // We no longer dispatch updateConnectionLastMessage from here
         const messageToSend = message.trim();
         setMessage("");
         setShowEmojiPicker(false);
         socketService.emit('send-message', { receiverId: userId, content: messageToSend, tempId: tempId }, (response) => {
             if (response.message) {
                 dispatch(updateMessage({ chatId: userId, tempId: tempId, finalMessage: response.message }));
-                // Re-fetch connections after a message is successfully sent to update last message and order
                 dispatch(fetchConnections(currentUser.id));
             } else if (response.error) {
                 console.error("Failed to send message:", response.error);
@@ -397,7 +356,7 @@ const ChatPage = () => {
             const tempId = Date.now().toString();
             socketService.emit('send-message', { receiverId: userId, content: uploadedFile.url, messageType: file.type.startsWith("image") ? 'image' : 'file', fileName: file.name, fileSize: file.size, tempId: tempId }, (response) => {
                 if (response.message) {
-                    dispatch(fetchConnections(currentUser.id)); // Also re-fetch here
+                    dispatch(fetchConnections(currentUser.id));
                 } else if (response.error) {
                     console.error("Failed to send file message:", response.error);
                 }

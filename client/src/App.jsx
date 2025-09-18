@@ -91,7 +91,7 @@ function App() {
         socketService.disconnect();
       };
     }
-  }, [isAuthenticated, token, user, dispatch]); // We no longer need location.pathname here
+  }, [isAuthenticated, token, user, dispatch]);
 
   return (
     <AnimatePresence mode="wait">
