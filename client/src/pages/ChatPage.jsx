@@ -1,4 +1,4 @@
-// client/src/pages/ChatPage.jsx (FINAL - With All Fixes)
+// client/src/pages/ChatPage.jsx (FINAL - With All Syntax and Logic Fixes)
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom"; 
@@ -18,10 +18,9 @@ import { Input } from "../components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "../components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../components/ui/dialog";
-import { getMessages, addMessage } from "../store/slices/chatSlice";
-import { setChatWallpaper, clearUnreadCount } from "../store/slices/connectionsSlice";
-import { updateConnectionLastMessage } from "../store/slices/connectionsSlice";
-import { sendMessage, uploadProfilePhoto, removeConnection, logCall, togglePinMessage, deleteMultipleMessages, forwardMessage, updateWallpaper } from "../utils/api";
+import { getMessages, addMessage, updateMessage } from "../store/slices/chatSlice";
+import { setChatWallpaper, clearUnreadCount, updateConnectionLastMessage } from "../store/slices/connectionsSlice";
+import { uploadProfilePhoto, removeConnection, logCall, togglePinMessage, deleteMultipleMessages, forwardMessage, updateWallpaper } from "../utils/api";
 
 const wallpapers = [
     { name: 'Default', url: '' },
@@ -308,17 +307,8 @@ const ChatPage = () => {
             setCallState('calling');
             setCallType(type);
             const peer = new Peer({ initiator: true, trickle: false, stream });
-            peer.on('signal', data => { 
-                socketService.emit('call-user', { 
-                    userToCall: userId, 
-                    signalData: data, 
-                    from: { id: currentUser.id, name: currentUser.name, profilePhotoUrl: currentUser.profilePhotoUrl }, 
-                    type 
-                }); 
-            });
-            peer.on('stream', remoteStream => { 
-                if (userVideo.current) userVideo.current.srcObject = remoteStream; 
-            });
+            peer.on('signal', data => { socketService.emit('call-user', { userToCall: userId, signalData: data, from: { id: currentUser.id, name: currentUser.name, profilePhotoUrl: currentUser.profilePhotoUrl }, type }); });
+            peer.on('stream', remoteStream => { if (userVideo.current) userVideo.current.srcObject = remoteStream; });
             socketService.on('call-accepted', signal => {
                 setCallState('active');
                 durationIntervalRef.current = setInterval(() => setCallDuration(prev => prev + 1), 1000);
@@ -336,12 +326,8 @@ const ChatPage = () => {
             setCallState('active');
             durationIntervalRef.current = setInterval(() => setCallDuration(prev => prev + 1), 1000);
             const peer = new Peer({ initiator: false, trickle: false, stream });
-            peer.on('signal', data => { 
-                socketService.emit('answer-call', { signal: data, to: caller.id }); 
-            });
-            peer.on('stream', remoteStream => { 
-                if(userVideo.current) userVideo.current.srcObject = remoteStream; 
-            });
+            peer.on('signal', data => { socketService.emit('answer-call', { signal: data, to: caller.id }); });
+            peer.on('stream', remoteStream => { if(userVideo.current) userVideo.current.srcObject = remoteStream; });
             peer.signal(callerSignal);
             connectionRef.current = peer;
         }).catch(err => console.error("getUserMedia error:", err));
@@ -357,24 +343,18 @@ const ChatPage = () => {
         if (currentUser && userId && chatUserConnection) {
             dispatch(getMessages(userId));
             socketService.emit('mark-messages-read', { chatUserId: userId });
-            dispatch(clearUnreadCount({ chatId: userId })); 
-
-            const handleCallMade = ({ signal, from, type }) => { 
-                setCaller(from); 
-                setCallerSignal(signal); 
-                setCallType(type); 
-                setCallState('incoming'); 
-            };
+            if (chatUserConnection.unreadCount > 0) {
+                dispatch(clearUnreadCount({ chatId: userId }));
+            }
+            const handleCallMade = ({ signal, from, type }) => { setCaller(from); setCallerSignal(signal); setCallType(type); setCallState('incoming'); };
             const handleCallEnded = () => leaveCall(false);
             const handleUserTyping = ({ userId: typingUserId }) => { if (typingUserId === userId) setIsTyping(true); };
             const handleUserStopTyping = ({ userId: stopTypingUserId }) => { if (stopTypingUserId === userId) setIsTyping(false); };
-            
             socketService.joinChat(userId);
             socketService.on("call-made", handleCallMade);
             socketService.on("call-ended", handleCallEnded);
             socketService.onUserTyping(handleUserTyping);
             socketService.onUserStopTyping(handleUserStopTyping);
-            
             return () => {
                 socketService.leaveChat(userId);
                 socketService.off("call-made", handleCallMade);
@@ -392,32 +372,20 @@ const ChatPage = () => {
     const handleSendMessage = async (e) => {
         e.preventDefault();
         if (!message.trim() || !currentUser) return;
-        socketService.emit("stop-typing", { receiverId: userId });
         const tempId = Date.now().toString();
-        const optimisticMessage = {
-            _id: tempId,
-            sender: { _id: currentUser.id, name: currentUser.name, profilePhotoUrl: currentUser.profilePhotoUrl },
-            receiver: { _id: userId },
-            content: message.trim(),
-            messageType: 'text',
-            createdAt: new Date().toISOString(),
-            status: 'sent',
-            _type: 'message',
-        };
+        const optimisticMessage = { _id: tempId, sender: { _id: currentUser.id, name: currentUser.name, profilePhotoUrl: currentUser.profilePhotoUrl }, receiver: { _id: userId }, content: message.trim(), messageType: 'text', createdAt: new Date().toISOString(), status: 'sent', _type: 'message' };
         dispatch(addMessage({ chatId: userId, message: optimisticMessage }));
-        dispatch(updateConnectionLastMessage({ 
-            chatId: userId, 
-            message: optimisticMessage,
-            currentUserId: currentUser.id,
-            currentPath: location.pathname
-        }));
+        dispatch(updateConnectionLastMessage({ chatId: userId, message: optimisticMessage, currentUserId: currentUser.id, currentPath: location.pathname }));
+        const messageToSend = message.trim();
         setMessage("");
         setShowEmojiPicker(false);
-        try {
-            await sendMessage({ receiverId: userId, content: optimisticMessage.content, messageType: 'text' });
-        } catch (err) {
-            console.error("Failed to send message:", err);
-        }
+        socketService.emit('send-message', { receiverId: userId, content: messageToSend, tempId: tempId }, (response) => {
+            if (response.message) {
+                dispatch(updateMessage({ chatId: userId, tempId: tempId, finalMessage: response.message }));
+            } else if (response.error) {
+                console.error("Failed to send message:", response.error);
+            }
+        });
     };
     
     const handleFileChange = async (event) => {
@@ -426,9 +394,15 @@ const ChatPage = () => {
         setIsUploading(true);
         try {
             const uploadedFile = await uploadProfilePhoto(file);
-            await sendMessage({ receiverId: userId, content: uploadedFile.url, messageType: file.type.startsWith("image") ? 'image' : 'file', fileName: file.name, fileSize: file.size });
-        } catch (error) { alert("Failed to upload file."); }
-        finally { setIsUploading(false); }
+            const tempId = Date.now().toString();
+            socketService.emit('send-message', { receiverId: userId, content: uploadedFile.url, messageType: file.type.startsWith("image") ? 'image' : 'file', fileName: file.name, fileSize: file.size, tempId: tempId }, (response) => {
+                if (response.error) console.error("Failed to send file message:", response.error);
+            });
+        } catch (error) { 
+            alert("Failed to upload file."); 
+        } finally { 
+            setIsUploading(false); 
+        }
     };
     
     const handleRemoveConnection = async () => {
@@ -458,111 +432,20 @@ const ChatPage = () => {
             transition={{ duration: 0.2 }}
             className="h-full w-full flex flex-col min-h-0"
         > 
-            <WallpaperDialog 
-                open={isWallpaperDialogOpen} 
-                onOpenChange={setIsWallpaperDialogOpen}
-                connectionId={chatUserConnection?._id}
-                currentWallpaper={currentWallpaper}
-                onWallpaperChange={(url) => dispatch(setChatWallpaper({ connectionId: chatUserConnection._id, wallpaperUrl: url }))}
-            />
-            <Dialog open={isForwarding} onOpenChange={setIsForwarding}>
-                <ForwardDialog connections={connections} currentUser={currentUser} onForward={handleForwardSelected} />
-            </Dialog>
-            <AnimatePresence>
-                {callState !== 'idle' && ( 
-                    <CallingUI 
-                        callState={callState}
-                        callType={callType}
-                        user={callState === 'incoming' ? caller : chatUser}
-                        myVideo={myVideo}
-                        userVideo={userVideo}
-                        isMuted={isMuted}
-                        isVideoOff={isVideoOff}
-                        callDuration={callDuration}
-                        leaveCall={leaveCall}
-                        answerCall={answerCall}
-                        toggleMute={() => setIsMuted(!isMuted)}
-                        toggleVideo={() => {
-                            if(stream && callType === 'video'){
-                                stream.getVideoTracks()[0].enabled = !isVideoOff;
-                                setIsVideoOff(!isVideoOff);
-                            }
-                        }}
-                    /> 
-                )}
-            </AnimatePresence>
-
+            <WallpaperDialog open={isWallpaperDialogOpen} onOpenChange={setIsWallpaperDialogOpen} connectionId={chatUserConnection?._id} currentWallpaper={currentWallpaper} onWallpaperChange={(url) => dispatch(setChatWallpaper({ connectionId: chatUserConnection._id, wallpaperUrl: url }))}/>
+            <Dialog open={isForwarding} onOpenChange={setIsForwarding}><ForwardDialog connections={connections} currentUser={currentUser} onForward={handleForwardSelected} /></Dialog>
+            <AnimatePresence>{callState !== 'idle' && ( <CallingUI callState={callState} callType={callType} user={callState === 'incoming' ? caller : chatUser} myVideo={myVideo} userVideo={userVideo} isMuted={isMuted} isVideoOff={isVideoOff} callDuration={callDuration} leaveCall={leaveCall} answerCall={answerCall} toggleMute={() => setIsMuted(!isMuted)} toggleVideo={() => {if(stream && callType === 'video'){stream.getVideoTracks()[0].enabled = !isVideoOff; setIsVideoOff(!isVideoOff);}}}/> )}</AnimatePresence>
             <div className={`flex-1 flex flex-col overflow-hidden ${callState !== 'idle' ? 'blur-sm pointer-events-none' : ''}`}>
                 <header className="flex items-center px-2 py-1 h-14 border-b border-slate-800 flex-shrink-0 bg-slate-900/70 backdrop-blur-lg z-20">
-                    {selectionMode ? (
-                        <div className="flex items-center justify-between w-full">
-                            <Button variant="ghost" size="icon" onClick={clearSelection}><CloseIcon className="h-5 w-5" /></Button>
-                            <span className="font-semibold text-lg">{selectedMessages.size} selected</span>
-                            <div className="flex items-center gap-1">
-                                <Button variant="ghost" size="icon" onClick={handleDeleteSelected}><Trash2 className="h-5 w-5" /></Button>
-                                {selectedMessages.size === 1 && <Button variant="ghost" size="icon" onClick={handlePinSelected}><Pin className="h-5 w-5" /></Button>}
-                                <Button variant="ghost" size="icon" onClick={() => setIsForwarding(true)}><Forward className="h-5 w-5" /></Button>
-                            </div>
-                        </div>
-                    ) : (
-                        <>
-                            <Button variant="ghost" size="icon" className="h-9 w-9 text-gray-400 md:hidden" onClick={() => navigate('/dashboard')}>
-                                <ArrowLeft className="h-5 w-5"/>
-                            </Button>
-                            <div className="flex items-center gap-2 cursor-pointer flex-1 overflow-hidden" onClick={() => setInfoPanelOpen(true)}>
-                                <Avatar className="h-9 w-9"><AvatarImage src={chatUser.profilePhotoUrl}/><AvatarFallback className="text-sm">{chatUser.name.charAt(0)}</AvatarFallback></Avatar>
-                                <div className="flex-1 overflow-hidden">
-                                    <h2 className="font-bold text-sm text-white truncate">{chatUser.name}</h2>
-                                    <p className="text-xs text-indigo-400 h-4">{isTyping ? 'typing...' : (chatUser.isOnline ? 'Online' : 'Offline')}</p>
-                                </div>
-                            </div>
-                            <div className="ml-auto flex items-center">
-                                <Button variant="ghost" size="icon" onClick={() => callUser('video')} className="h-9 w-9 text-gray-400"><Video className="h-4 w-4"/></Button>
-                                <Button variant="ghost" size="icon" onClick={() => callUser('audio')} className="h-9 w-9 text-gray-400"><Phone className="h-4 w-4"/></Button>
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-9 w-9 text-gray-400"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger>
-                                    <DropdownMenuContent className="bg-slate-800 border-slate-700 text-white">
-                                        <DropdownMenuItem onClick={() => setInfoPanelOpen(true)}>View Info</DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => setIsWallpaperDialogOpen(true)}>
-                                            <Wallpaper className="mr-2 h-4 w-4" />
-                                            <span>Change Wallpaper</span>
-                                        </DropdownMenuItem>
-                                        <DropdownMenuSeparator className="bg-slate-700"/>
-                                        <DropdownMenuItem className="text-red-500" onClick={handleRemoveConnection}><UserX className="mr-2 h-4 w-4"/>Remove Connection</DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
-                            </div>
-                        </>
-                    )}
+                    {selectionMode ? (<div className="flex items-center justify-between w-full"><Button variant="ghost" size="icon" onClick={clearSelection}><CloseIcon className="h-5 w-5" /></Button><span className="font-semibold text-lg">{selectedMessages.size} selected</span><div className="flex items-center gap-1"><Button variant="ghost" size="icon" onClick={handleDeleteSelected}><Trash2 className="h-5 w-5" /></Button>{selectedMessages.size === 1 && <Button variant="ghost" size="icon" onClick={handlePinSelected}><Pin className="h-5 w-5" /></Button>}<Button variant="ghost" size="icon" onClick={() => setIsForwarding(true)}><Forward className="h-5 w-5" /></Button></div></div>) : (<><Button variant="ghost" size="icon" className="h-9 w-9 text-gray-400 md:hidden" onClick={() => navigate('/dashboard')}><ArrowLeft className="h-5 w-5"/></Button><div className="flex items-center gap-2 cursor-pointer flex-1 overflow-hidden" onClick={() => setInfoPanelOpen(true)}><Avatar className="h-9 w-9"><AvatarImage src={chatUser.profilePhotoUrl}/><AvatarFallback className="text-sm">{chatUser.name.charAt(0)}</AvatarFallback></Avatar><div className="flex-1 overflow-hidden"><h2 className="font-bold text-sm text-white truncate">{chatUser.name}</h2><p className="text-xs text-indigo-400 h-4">{isTyping ? 'typing...' : (chatUser.isOnline ? 'Online' : 'Offline')}</p></div></div><div className="ml-auto flex items-center"><Button variant="ghost" size="icon" onClick={() => callUser('video')} className="h-9 w-9 text-gray-400"><Video className="h-4 w-4"/></Button><Button variant="ghost" size="icon" onClick={() => callUser('audio')} className="h-9 w-9 text-gray-400"><Phone className="h-4 w-4"/></Button><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-9 w-9 text-gray-400"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger><DropdownMenuContent className="bg-slate-800 border-slate-700 text-white"><DropdownMenuItem onClick={() => setInfoPanelOpen(true)}>View Info</DropdownMenuItem><DropdownMenuItem onClick={() => setIsWallpaperDialogOpen(true)}><Wallpaper className="mr-2 h-4 w-4" /><span>Change Wallpaper</span></DropdownMenuItem><DropdownMenuSeparator className="bg-slate-700"/><DropdownMenuItem className="text-red-500" onClick={handleRemoveConnection}><UserX className="mr-2 h-4 w-4"/>Remove Connection</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div></>)}
                 </header>
-
-                {pinnedMessage && !selectionMode && (
-                    <motion.div initial={{y: -50}} animate={{y: 0}} className="p-2 bg-slate-800/50 flex items-center gap-2 text-sm text-slate-300 border-b border-slate-700 z-10">
-                        <Pin className="h-4 w-4 text-indigo-400 flex-shrink-0" />
-                        <p className="truncate flex-1">{pinnedMessage.content}</p>
-                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={async () => { await togglePinMessage(pinnedMessage._id); dispatch(getMessages(userId)); }}>
-                            <CloseIcon className="h-4 w-4" />
-                        </Button>
-                    </motion.div>
-                )}
-                
+                {pinnedMessage && !selectionMode && (<motion.div initial={{y: -50}} animate={{y: 0}} className="p-2 bg-slate-800/50 flex items-center gap-2 text-sm text-slate-300 border-b border-slate-700 z-10"><Pin className="h-4 w-4 text-indigo-400 flex-shrink-0" /><p className="truncate flex-1">{pinnedMessage.content}</p><Button variant="ghost" size="icon" className="h-6 w-6" onClick={async () => { await togglePinMessage(pinnedMessage._id); dispatch(getMessages(userId)); }}><CloseIcon className="h-4 w-4" /></Button></motion.div>)}
                 <div className="flex-1 min-h-0 relative">
-                    {currentWallpaper ? (
-                        <div 
-                            className="absolute inset-0 w-full h-full bg-cover bg-center z-0" 
-                            style={{ backgroundImage: `url(${currentWallpaper})` }}
-                        >
-                            <div className="absolute inset-0 w-full h-full bg-black/50"></div>
-                        </div>
-                    ) : (
-                        <div className="static-pattern-background"></div>
-                    )}
-
+                    {currentWallpaper ? (<div className="absolute inset-0 w-full h-full bg-cover bg-center z-0" style={{ backgroundImage: `url(${currentWallpaper})` }}><div className="absolute inset-0 w-full h-full bg-black/50"></div></div>) : (<div className="static-pattern-background"></div>)}
                     <div className="relative z-10 h-full overflow-y-auto custom-scrollbar">
                         <div className="p-3 flex flex-col">
                             {activeChatMessages.map((item, index) => {
                                 const showDateHeader = index === 0 || !isSameDay(new Date(activeChatMessages[index - 1].createdAt), new Date(item.createdAt));
-                                
                                 if (item._type === 'call') {
                                     const isOutgoing = item.caller._id === currentUser.id;
                                     const callTime = format(new Date(item.createdAt), 'p');
@@ -570,42 +453,21 @@ const ChatPage = () => {
                                     let text = 'Incoming call';
                                     if (isOutgoing) { Icon = PhoneOutgoing; text = 'Outgoing call'; }
                                     if (item.status === 'missed' || item.status === 'rejected') { Icon = PhoneMissed; text = 'Missed call'; }
-                                    return (
-                                        <div key={item._id || index}>
-                                        {showDateHeader && (<div className="text-center text-xs text-slate-500 my-4 bg-slate-800/50 self-center px-3 py-1 rounded-full">{format(new Date(item.createdAt), 'MMMM d, yyyy')}</div>)}
-                                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center justify-center my-3">
-                                            <div className="flex items-center gap-2 text-sm text-slate-400 bg-slate-800/60 px-3 py-1.5 rounded-lg">
-                                            <Icon className={`h-4 w-4 ${item.status === 'missed' || item.status === 'rejected' ? 'text-red-400' : 'text-slate-500'}`} />
-                                            <span>{text}</span>
-                                            <span>•</span>
-                                            <span>{callTime}</span>
-                                            </div>
-                                        </motion.div>
-                                        </div>
-                                    );
+                                    return (<div key={item._id || index}>{showDateHeader && (<div className="text-center text-xs text-slate-500 my-4 bg-slate-800/50 self-center px-3 py-1 rounded-full">{format(new Date(item.createdAt), 'MMMM d, yyyy')}</div>)}<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center justify-center my-3"><div className="flex items-center gap-2 text-sm text-slate-400 bg-slate-800/60 px-3 py-1.5 rounded-lg"><Icon className={`h-4 w-4 ${item.status === 'missed' || item.status === 'rejected' ? 'text-red-400' : 'text-slate-500'}`} /><span>{text}</span><span>•</span><span>{callTime}</span></div></motion.div></div>);
                                 }
-
                                 const isSender = item.sender?._id === currentUser.id;
                                 const isSelected = selectedMessages.has(item._id);
-
                                 return (
                                     <div key={item._id || index} onContextMenu={(e) => { e.preventDefault(); handleMessageLongPress(item._id); }}>
                                         {showDateHeader && (<div className="text-center text-xs text-slate-500 my-4 bg-slate-800/50 self-center px-3 py-1 rounded-full">{format(new Date(item.createdAt), 'MMMM d, yyyy')}</div>)}
-                                        <motion.div 
-                                            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} 
-                                            onClick={() => handleMessageClick(item._id)}
-                                            className={`flex items-end gap-1.5 my-0.5 rounded-lg transition-colors duration-200 ${isSender ? "justify-end" : "justify-start"} ${isSelected ? 'bg-indigo-500/20' : ''}`}
-                                        >
+                                        {/* <<< --- THIS IS THE SYNTAX FIX --- >>> */}
+                                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} onClick={() => handleMessageClick(item._id)} className={`flex items-end gap-1.5 my-0.5 rounded-lg transition-colors duration-200 ${isSender ? "justify-end" : "justify-start"} ${isSelected ? 'bg-indigo-500/20' : ''}`}>
                                             {!isSender && <Avatar className="h-6 w-6 self-end"><AvatarImage src={chatUser?.profilePhotoUrl}/><AvatarFallback className="text-xs">{chatUser?.name?.charAt(0)}</AvatarFallback></Avatar>}
                                             <div className={`message-bubble max-w-[70%] md:max-w-[60%] rounded-xl ${isSender ? "bg-indigo-600 sent" : "bg-[#2a2a36] received"}`}>
                                                 {item.messageType === 'sticker' || item.messageType === 'image' ? ( <img src={item.content} alt={item.messageType} className="w-48 h-auto rounded-lg" /> ) : 
                                                 item.messageType === 'file' ? ( <a href={item.content} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-3 text-white hover:underline bg-slate-700/50 rounded-lg"><Paperclip className="h-8 w-8 flex-shrink-0 text-slate-400" /><span>{item.fileName || 'View Attached File'}</span></a> ) : 
                                                 ( <p className="px-2.5 py-1.5 text-sm break-words text-white">{item.content}</p> )}
-                                                
-                                                <span className="text-[10px] opacity-70 float-right mr-2 mb-1 self-end text-white/70 flex items-center">
-                                                    {formatTime(item.createdAt)}
-                                                    {isSender && item._type === 'message' && <MessageStatus status={item.status} />}
-                                                </span>
+                                                <span className="text-[10px] opacity-70 float-right mr-2 mb-1 self-end text-white/70 flex items-center">{formatTime(item.createdAt)}{isSender && item._type === 'message' && <MessageStatus status={item.status} />}</span>
                                             </div>
                                         </motion.div>
                                     </div>
@@ -615,25 +477,12 @@ const ChatPage = () => {
                         </div>
                     </div>
                 </div>
-
                 <footer className="p-1.5 border-t border-slate-800 bg-slate-900/70 backdrop-blur-lg z-20 relative">
-                    <AnimatePresence>
-                        {showEmojiPicker && ( <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute bottom-[52px] left-2 z-30"><EmojiPicker onEmojiClick={handleEmojiClick} theme="dark" lazyLoadEmojis={true} /></motion.div>)}
-                    </AnimatePresence>
-                    
-                  <form onSubmit={handleSendMessage} className="flex items-center gap-1.5">
-                    <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
-                    <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-gray-400 hover:text-white flex-shrink-0" onClick={() => fileInputRef.current.click()} disabled={isUploading}><Paperclip className="h-4 w-4" /></Button>
-                    <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-gray-400 hover:text-white flex-shrink-0" onClick={() => setShowEmojiPicker(!showEmojiPicker)}><Smile className="h-4 w-4" /></Button>
-                    <Input value={message} onChange={(e) => { setMessage(e.target.value); handleTyping(); }} placeholder="Message..." className="flex-1 h-9 bg-slate-800 border-slate-700 rounded-full px-4 text-sm" onFocus={() => setShowEmojiPicker(false)} />
-                    <Button type="submit" size="icon" className="h-9 w-9 bg-indigo-600 hover:bg-indigo-500 rounded-full flex-shrink-0" disabled={!message.trim() || isUploading}>{isUploading ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div> : <Send className="h-4 w-4" />}</Button>
-                  </form>
+                    <AnimatePresence>{showEmojiPicker && ( <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute bottom-[52px] left-2 z-30"><EmojiPicker onEmojiClick={handleEmojiClick} theme="dark" lazyLoadEmojis={true} /></motion.div>)}</AnimatePresence>
+                    <form onSubmit={handleSendMessage} className="flex items-center gap-1.5"><input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" /><Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-gray-400 hover:text-white flex-shrink-0" onClick={() => fileInputRef.current.click()} disabled={isUploading}><Paperclip className="h-4 w-4" /></Button><Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-gray-400 hover:text-white flex-shrink-0" onClick={() => setShowEmojiPicker(!showEmojiPicker)}><Smile className="h-4 w-4" /></Button><Input value={message} onChange={(e) => { setMessage(e.target.value); handleTyping(); }} placeholder="Message..." className="flex-1 h-9 bg-slate-800 border-slate-700 rounded-full px-4 text-sm" onFocus={() => setShowEmojiPicker(false)} /><Button type="submit" size="icon" className="h-9 w-9 bg-indigo-600 hover:bg-indigo-500 rounded-full flex-shrink-0" disabled={!message.trim() || isUploading}>{isUploading ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div> : <Send className="h-4 w-4" />}</Button></form>
                 </footer>
             </div>
-            
-            <AnimatePresence>
-              {isInfoPanelOpen && ( <InfoPanel user={chatUser} isOpen={isInfoPanelOpen} onClose={() => setInfoPanelOpen(false)} onRemoveConnection={handleRemoveConnection} /> )}
-            </AnimatePresence>
+            <AnimatePresence>{isInfoPanelOpen && ( <InfoPanel user={chatUser} isOpen={isInfoPanelOpen} onClose={() => setInfoPanelOpen(false)} onRemoveConnection={handleRemoveConnection} /> )}</AnimatePresence>
         </motion.div>
     );
 };
