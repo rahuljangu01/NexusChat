@@ -1,4 +1,4 @@
-// client/src/App.jsx (FINAL - With All Global Listeners)
+// client/src/App.jsx (FINAL - With All Fixes)
 
 import { useEffect } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom"; 
@@ -23,7 +23,7 @@ import { MessageSquare } from "lucide-react";
 // Service & Redux Imports
 import { socketService } from "./services/socketService";
 import { addMessage, updateSentMessagesStatus } from "./store/slices/chatSlice";
-import { setUserOnline, setUserOffline } from "./store/slices/connectionsSlice";
+import { setUserOnline, setUserOffline, incrementUnreadCount } from "./store/slices/connectionsSlice";
 
 const DashboardWelcome = () => (
     <motion.main 
@@ -55,10 +55,15 @@ function App() {
       
       const handleReceiveMessage = (message) => {
         const chatId = message.sender?._id === user.id ? message.receiver?._id : message.sender?._id;
-        if(chatId) dispatch(addMessage({ chatId, message }));
+        if(chatId) {
+            dispatch(addMessage({ chatId, message }));
+            // Only increment count if the user is NOT on that chat screen
+            if (!location.pathname.includes(chatId)) {
+                dispatch(incrementUnreadCount({ chatId }));
+            }
+        }
       };
 
-      // <<< --- NAYE LISTENERS YAHAN HAIN --- >>>
       const handleMessagesDelivered = ({ chatPartnerId }) => {
         dispatch(updateSentMessagesStatus({ chatPartnerId, status: 'delivered' }));
       };
@@ -81,7 +86,7 @@ function App() {
         socketService.disconnect();
       };
     }
-  }, [isAuthenticated, token, user, dispatch]);
+  }, [isAuthenticated, token, user, dispatch, location.pathname]); // <-- Warning Fixed
 
   return (
     <AnimatePresence mode="wait">

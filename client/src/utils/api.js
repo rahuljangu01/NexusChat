@@ -4,7 +4,8 @@ import axios from "axios";
 
 // <<< --- THIS IS THE HARDCODED FIX FOR THE API URL --- >>>
 // It points directly to your live Render service.
-const API_URL = "https://nexuschat-kmk8.onrender.com/api";
+// const API_URL = "https://nexuschat-kmk8.onrender.com/api";
+const API_URL = "/api";
 console.log("API requests will be sent to:", API_URL);
 
 const api = axios.create({

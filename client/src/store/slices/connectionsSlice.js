@@ -1,4 +1,4 @@
-// client/src/store/slices/connectionsSlice.js (FINAL & UPDATED)
+// client/src/store/slices/connectionsSlice.js (FINAL & UPDATED WITH UNREAD COUNT LOGIC)
 
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import { getMyConnections } from "../../utils/api";
@@ -68,7 +68,6 @@ const connectionsSlice = createSlice({
         state.connections[connectionIndex].chatWallpaper = wallpaperUrl;
       }
     },
-    // <<< --- THIS IS THE NEW REDUCER --- >>>
     clearUnreadCount: (state, action) => {
       const { chatId } = action.payload;
       const connectionIndex = state.connections.findIndex(conn => 
@@ -76,6 +75,18 @@ const connectionsSlice = createSlice({
       );
       if (connectionIndex > -1) {
         state.connections[connectionIndex].unreadCount = 0;
+      }
+    },
+    incrementUnreadCount: (state, action) => {
+      const { chatId } = action.payload;
+      const connectionIndex = state.connections.findIndex(conn =>
+        conn.users.some(user => user._id === chatId)
+      );
+      if (connectionIndex > -1) {
+        if (!state.connections[connectionIndex].unreadCount) {
+          state.connections[connectionIndex].unreadCount = 0;
+        }
+        state.connections[connectionIndex].unreadCount += 1;
       }
     },
   },
@@ -87,12 +98,15 @@ const connectionsSlice = createSlice({
       .addCase(fetchConnections.fulfilled, (state, action) => {
         state.loading = 'succeeded';
         const { connections, currentUserId } = action.payload;
+        
         const acceptedConnections = connections.filter(c => c.status === 'accepted');
+        
         acceptedConnections.sort((a, b) => {
             const timeA = a.lastMessage ? new Date(a.lastMessage.createdAt) : new Date(a.updatedAt || 0);
             const timeB = b.lastMessage ? new Date(b.lastMessage.createdAt) : new Date(b.updatedAt || 0);
             return timeB - timeA;
         });
+
         state.connections = acceptedConnections;
         state.pendingRequests = connections.filter(c => c.status === 'pending' && c.requestedTo === currentUserId);
       })
@@ -103,6 +117,5 @@ const connectionsSlice = createSlice({
   },
 });
 
-// <<< --- EXPORT THE NEW ACTION HERE --- >>>
-export const { setUserOnline, setUserOffline, updateConnectionLastMessage, setChatWallpaper, clearUnreadCount } = connectionsSlice.actions;
+export const { setUserOnline, setUserOffline, updateConnectionLastMessage, setChatWallpaper, clearUnreadCount, incrementUnreadCount } = connectionsSlice.actions;
 export default connectionsSlice.reducer;

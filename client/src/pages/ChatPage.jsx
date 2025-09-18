@@ -614,7 +614,8 @@ const ChatPage = () => {
 
                 <footer className="p-1.5 border-t border-slate-800 bg-slate-900/70 backdrop-blur-lg z-20 relative">
                     <AnimatePresence>
-                        {showEmojiPicker && ( <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute bottom-[52px] left-2 z-30"><EmojiPicker onEmojiClick={handleEmojiClick} theme="dark" lazyLoadEmojis={true} /></motion.div>)}
+                        {showEmojiPicker && ( <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute bottom-[52px] left-2 z-30">
+                            <EmojiPicker onEmojiClick={handleEmojiClick} theme="dark" /></motion.div>)}
                     </AnimatePresence>
                     
                   <form onSubmit={handleSendMessage} className="flex items-center gap-1.5">
