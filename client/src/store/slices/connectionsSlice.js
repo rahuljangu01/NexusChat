@@ -1,4 +1,4 @@
-// client/src/store/slices/connectionsSlice.js (FINAL & UPDATED WITH UNREAD COUNT LOGIC)
+// client/src/store/slices/connectionsSlice.js (FINAL CORRECTED SYNTAX)
 
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import { getMyConnections } from "../../utils/api";
@@ -9,7 +9,7 @@ export const fetchConnections = createAsyncThunk(
     try {
       const connections = await getMyConnections();
       return { connections, currentUserId };
-    } catch (error) {
+    } catch (error) { // <<< --- THIS IS THE FIX --- >>>
       return rejectWithValue(error.response?.data?.message || "Failed to fetch connections");
     }
   }
@@ -47,18 +47,25 @@ const connectionsSlice = createSlice({
       });
     },
     updateConnectionLastMessage: (state, action) => {
-      const { chatId, message } = action.payload;
+      const { chatId, message, currentUserId, currentPath } = action.payload;
       const connectionIndex = state.connections.findIndex(conn => 
         conn.users.some(user => user._id === chatId)
       );
+
       if (connectionIndex > -1) {
-        const connectionToUpdate = state.connections[connectionIndex];
-        const updatedConnection = {
-          ...connectionToUpdate,
-          lastMessage: message,
-        };
+        const connectionToUpdate = { ...state.connections[connectionIndex] };
+        
+        connectionToUpdate.lastMessage = message;
+        
+        if (message.sender._id !== currentUserId && !currentPath.includes(chatId)) {
+            if (!connectionToUpdate.unreadCount) {
+                connectionToUpdate.unreadCount = 0;
+            }
+            connectionToUpdate.unreadCount += 1;
+        }
+        
         state.connections.splice(connectionIndex, 1);
-        state.connections.unshift(updatedConnection);
+        state.connections.unshift(connectionToUpdate);
       }
     },
     setChatWallpaper: (state, action) => {
@@ -75,18 +82,6 @@ const connectionsSlice = createSlice({
       );
       if (connectionIndex > -1) {
         state.connections[connectionIndex].unreadCount = 0;
-      }
-    },
-    incrementUnreadCount: (state, action) => {
-      const { chatId } = action.payload;
-      const connectionIndex = state.connections.findIndex(conn =>
-        conn.users.some(user => user._id === chatId)
-      );
-      if (connectionIndex > -1) {
-        if (!state.connections[connectionIndex].unreadCount) {
-          state.connections[connectionIndex].unreadCount = 0;
-        }
-        state.connections[connectionIndex].unreadCount += 1;
       }
     },
   },
@@ -117,5 +112,6 @@ const connectionsSlice = createSlice({
   },
 });
 
-export const { setUserOnline, setUserOffline, updateConnectionLastMessage, setChatWallpaper, clearUnreadCount, incrementUnreadCount } = connectionsSlice.actions;
+// We no longer need incrementUnreadCount, so it's removed from the export
+export const { setUserOnline, setUserOffline, updateConnectionLastMessage, setChatWallpaper, clearUnreadCount } = connectionsSlice.actions;
 export default connectionsSlice.reducer;

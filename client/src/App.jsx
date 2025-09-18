@@ -1,4 +1,4 @@
-// client/src/App.jsx (FINAL - With All Fixes)
+// client/src/App.jsx (FINAL - CORRECTED IMPORTS)
 
 import { useEffect } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom"; 
@@ -23,7 +23,8 @@ import { MessageSquare } from "lucide-react";
 // Service & Redux Imports
 import { socketService } from "./services/socketService";
 import { addMessage, updateSentMessagesStatus } from "./store/slices/chatSlice";
-import { setUserOnline, setUserOffline, incrementUnreadCount } from "./store/slices/connectionsSlice";
+// <<< --- THIS IS THE FIX --- >>>
+import { setUserOnline, setUserOffline, updateConnectionLastMessage } from "./store/slices/connectionsSlice";
 
 const DashboardWelcome = () => (
     <motion.main 
@@ -57,10 +58,12 @@ function App() {
         const chatId = message.sender?._id === user.id ? message.receiver?._id : message.sender?._id;
         if(chatId) {
             dispatch(addMessage({ chatId, message }));
-            // Only increment count if the user is NOT on that chat screen
-            if (!location.pathname.includes(chatId)) {
-                dispatch(incrementUnreadCount({ chatId }));
-            }
+            dispatch(updateConnectionLastMessage({ 
+                chatId, 
+                message, 
+                currentUserId: user.id, 
+                currentPath: location.pathname 
+            }));
         }
       };
 
@@ -86,7 +89,7 @@ function App() {
         socketService.disconnect();
       };
     }
-  }, [isAuthenticated, token, user, dispatch, location.pathname]); // <-- Warning Fixed
+  }, [isAuthenticated, token, user, dispatch, location.pathname]);
 
   return (
     <AnimatePresence mode="wait">

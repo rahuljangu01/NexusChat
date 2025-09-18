@@ -130,7 +130,7 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="h-screen w-screen flex text-gray-200 bg-[#0d1117] overflow-hidden">
+    <div className="h-[100svh] w-screen flex text-gray-200 bg-[#0d1117] overflow-hidden">
       <aside className="hidden md:flex w-20 bg-[#0d1117] p-4 flex-col items-center justify-between z-20 flex-shrink-0">
         <div>
           <Link to="/dashboard" className="block mb-10"><img src="/logo.png" alt="Nexus Logo" className="h-10 w-10 transition-transform hover:scale-110"/></Link>
@@ -261,7 +261,7 @@ const Dashboard = () => {
       
       <main className={`
           flex-1 flex-col relative bg-[#0d1117]
-          pb-16 md:pb-0
+          pb-16 md:pb-0 h-full
           ${isDashboardHome ? 'hidden md:flex' : 'flex'}
       `}>
           <Outlet />
