@@ -1,12 +1,10 @@
-// server/server.js (FINAL HARDCODED FIX)
+// server/server.js (FINAL - SIMPLIFIED CORS)
 
 // =================================================================
 // IMPORTS
 // =================================================================
 const http = require("http");
 const path = require('path');
-
-// Third-party Libraries
 const express = require("express");
 const socketIo = require("socket.io");
 const cors = require("cors");
@@ -38,30 +36,19 @@ const server = http.createServer(app);
 // DATABASE & SOCKET.IO SETUP
 // =================================================================
 
-// Connect to MongoDB Database
 connectDB();
 
-// <<< --- THIS IS THE HARDCODED FIX FOR CORS --- >>>
-const allowedOrigins = [
-  "http://localhost:3000", 
-  "https://nexuschat-kmk8.onrender.com" // Your live frontend URL
-];
-
-console.log(`[CORS DEBUG] Forcing allowed origins: ${JSON.stringify(allowedOrigins)}`);
+// <<< --- THIS IS THE NEW, SIMPLIFIED CORS LOGIC --- >>>
+// For production, it uses the CLIENT_URL from Render.
+// For local development, it defaults to allowing http://localhost:3001
+const appOrigin = process.env.CLIENT_URL || "http://localhost:3001";
+console.log(`[CORS CONFIG] Server will allow requests from: ${appOrigin}`);
 
 const corsOptions = {
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      console.error(`[CORS BLOCK] Origin not allowed: ${origin}`);
-      callback(new Error('This origin is not allowed by CORS'));
-    }
-  },
-  credentials: true,
+    origin: appOrigin,
+    credentials: true,
 };
 
-// Initialize Socket.IO with the same CORS options
 const io = socketIo(server, {
   cors: corsOptions,
 });
@@ -81,7 +68,7 @@ app.use((req, res, next) => {
 // CORE MIDDLEWARE
 // =================================================================
 
-// 1. CORS Configuration - Use the options defined above
+// 1. CORS Configuration - Use the simple options defined above
 app.use(cors(corsOptions));
 
 // 2. Security Headers with Helmet
@@ -94,8 +81,8 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // 4. Rate Limiting to prevent API abuse
 const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200, // Limit each IP to 200 requests per window
+  windowMs: 15 * 60 * 1000,
+  max: 200,
   standardHeaders: true,
   legacyHeaders: false,
   message: "Too many requests from this IP, please try again after 15 minutes.",
@@ -106,11 +93,6 @@ app.use("/api/", apiLimiter);
 // =================================================================
 // API ROUTES
 // =================================================================
-
-// Simple Health Check Route
-app.get("/api", (req, res) => {
-  res.status(200).json({ message: "Nexus API is up and running!", status: "OK" });
-});
 
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
@@ -137,13 +119,10 @@ if (process.env.NODE_ENV === 'production') {
 // =================================================================
 // ERROR HANDLING MIDDLEWARE
 // =================================================================
-
-// Handle 404 for any API routes not found
 app.use("/api/*", (req, res) => {
   res.status(404).json({ message: "API endpoint not found" });
 });
 
-// Global Error Handler - Catches all errors from routes
 app.use((err, req, res, next) => {
   console.error("Global Error Handler:", err.stack);
   res.status(err.status || 500).json({ 
