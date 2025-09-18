@@ -1,7 +1,7 @@
-// client/src/pages/ChatPage.jsx (FINAL - With Wallpaper Scroll & Unread Count Fix)
+// client/src/pages/ChatPage.jsx (FINAL - With All Fixes)
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom"; 
 import { useSelector, useDispatch } from "react-redux";
 import { ArrowLeft, Send, Paperclip, MoreVertical, Video, Phone, UserX, Smile, PhoneIncoming, PhoneOutgoing, PhoneMissed, Check, CheckCheck, Pin, Trash2, Forward, X as CloseIcon, Search, Wallpaper, ImagePlus } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -19,11 +19,10 @@ import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "../components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../components/ui/dialog";
 import { getMessages, addMessage } from "../store/slices/chatSlice";
-import { setChatWallpaper, clearUnreadCount } from "../store/slices/connectionsSlice"; // <-- Import clearUnreadCount
+import { setChatWallpaper, clearUnreadCount } from "../store/slices/connectionsSlice";
 import { updateConnectionLastMessage } from "../store/slices/connectionsSlice";
 import { sendMessage, uploadProfilePhoto, removeConnection, logCall, togglePinMessage, deleteMultipleMessages, forwardMessage, updateWallpaper } from "../utils/api";
 
-// ... (WallpaperDialog, MessageStatus, ForwardDialog components remain the same as before)
 const wallpapers = [
     { name: 'Default', url: '' },
     { name: 'Doodle', url: '/wallpapers/doodle.png' },
@@ -157,6 +156,7 @@ const ChatPage = () => {
     const { userId } = useParams();
     const navigate = useNavigate();
     const dispatch = useDispatch();
+    const location = useLocation();
     
     const { user: currentUser } = useSelector((state) => state.auth);
     const { connections } = useSelector((state) => state.connections);
@@ -357,7 +357,7 @@ const ChatPage = () => {
         if (currentUser && userId) {
             dispatch(getMessages(userId));
             socketService.emit('mark-messages-read', { chatUserId: userId });
-            dispatch(clearUnreadCount({ chatId: userId })); // <-- UNREAD COUNT FIX
+            dispatch(clearUnreadCount({ chatId: userId })); 
 
             const handleCallMade = ({ signal, from, type }) => { 
                 setCaller(from); 
@@ -405,7 +405,12 @@ const ChatPage = () => {
             _type: 'message',
         };
         dispatch(addMessage({ chatId: userId, message: optimisticMessage }));
-        dispatch(updateConnectionLastMessage({ chatId: userId, message: optimisticMessage }));
+        dispatch(updateConnectionLastMessage({ 
+            chatId: userId, 
+            message: optimisticMessage,
+            currentUserId: currentUser.id,
+            currentPath: location.pathname
+        }));
         setMessage("");
         setShowEmojiPicker(false);
         try {
@@ -541,7 +546,6 @@ const ChatPage = () => {
                     </motion.div>
                 )}
                 
-                {/* <<< --- THIS IS THE WALLPAPER SCROLLING FIX --- >>> */}
                 <div className="flex-1 min-h-0 relative">
                     {currentWallpaper ? (
                         <div 
@@ -614,8 +618,7 @@ const ChatPage = () => {
 
                 <footer className="p-1.5 border-t border-slate-800 bg-slate-900/70 backdrop-blur-lg z-20 relative">
                     <AnimatePresence>
-                        {showEmojiPicker && ( <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute bottom-[52px] left-2 z-30">
-                            <EmojiPicker onEmojiClick={handleEmojiClick} theme="dark" lazyLoadEmojis={true} /></motion.div>)}
+                        {showEmojiPicker && ( <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute bottom-[52px] left-2 z-30"><EmojiPicker onEmojiClick={handleEmojiClick} theme="dark" lazyLoadEmojis={true} /></motion.div>)}
                     </AnimatePresence>
                     
                   <form onSubmit={handleSendMessage} className="flex items-center gap-1.5">

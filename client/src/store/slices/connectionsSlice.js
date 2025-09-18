@@ -1,4 +1,4 @@
-// client/src/store/slices/connectionsSlice.js (FINAL CORRECTED SYNTAX)
+// client/src/store/slices/connectionsSlice.js (FINAL & SAFE)
 
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import { getMyConnections } from "../../utils/api";
@@ -9,7 +9,7 @@ export const fetchConnections = createAsyncThunk(
     try {
       const connections = await getMyConnections();
       return { connections, currentUserId };
-    } catch (error) { // <<< --- THIS IS THE FIX --- >>>
+    } catch (error) {
       return rejectWithValue(error.response?.data?.message || "Failed to fetch connections");
     }
   }
@@ -55,15 +55,19 @@ const connectionsSlice = createSlice({
       if (connectionIndex > -1) {
         const connectionToUpdate = { ...state.connections[connectionIndex] };
         
+        // Update the last message
         connectionToUpdate.lastMessage = message;
         
-        if (message.sender._id !== currentUserId && !currentPath.includes(chatId)) {
+        // Safely check currentPath before using .includes()
+        // Increment unread count only if it's a received message and user is not on that chat screen
+        if (currentPath && message.sender._id !== currentUserId && !currentPath.includes(chatId)) {
             if (!connectionToUpdate.unreadCount) {
                 connectionToUpdate.unreadCount = 0;
             }
             connectionToUpdate.unreadCount += 1;
         }
         
+        // Move the updated connection to the top of the list
         state.connections.splice(connectionIndex, 1);
         state.connections.unshift(connectionToUpdate);
       }
@@ -112,6 +116,5 @@ const connectionsSlice = createSlice({
   },
 });
 
-// We no longer need incrementUnreadCount, so it's removed from the export
 export const { setUserOnline, setUserOffline, updateConnectionLastMessage, setChatWallpaper, clearUnreadCount } = connectionsSlice.actions;
 export default connectionsSlice.reducer;

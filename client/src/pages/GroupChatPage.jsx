@@ -356,7 +356,7 @@ const GroupChatPage = () => {
                                 exit={{ opacity: 0, y: 10 }} 
                                 className="absolute bottom-[60px] left-2 z-30"
                             >
-                                <EmojiPicker onEmojiClick={handleEmojiClick} theme="dark" lazyLoadEmojis={true}/>
+                                <EmojiPicker onEmojiClick={handleEmojiClick} theme="dark" lazyLoadEmojis={true} />
                             </motion.div>
                         )}
                     </AnimatePresence>

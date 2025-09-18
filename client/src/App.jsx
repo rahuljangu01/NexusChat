@@ -1,4 +1,4 @@
-// client/src/App.jsx (FINAL - CORRECTED IMPORTS)
+// client/src/App.jsx (FINAL - CORRECTED DISPATCH LOGIC)
 
 import { useEffect } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom"; 
@@ -23,7 +23,6 @@ import { MessageSquare } from "lucide-react";
 // Service & Redux Imports
 import { socketService } from "./services/socketService";
 import { addMessage, updateSentMessagesStatus } from "./store/slices/chatSlice";
-// <<< --- THIS IS THE FIX --- >>>
 import { setUserOnline, setUserOffline, updateConnectionLastMessage } from "./store/slices/connectionsSlice";
 
 const DashboardWelcome = () => (
@@ -55,15 +54,19 @@ function App() {
       socketService.connect(token);
       
       const handleReceiveMessage = (message) => {
-        const chatId = message.sender?._id === user.id ? message.receiver?._id : message.sender?._id;
-        if(chatId) {
-            dispatch(addMessage({ chatId, message }));
-            dispatch(updateConnectionLastMessage({ 
-                chatId, 
-                message, 
-                currentUserId: user.id, 
-                currentPath: location.pathname 
-            }));
+        // This logic now ONLY handles 1-on-1 messages
+        if (message.sender && message.receiver) {
+          const chatId = message.sender._id === user.id ? message.receiver._id : message.sender._id;
+    
+          if(chatId) {
+              dispatch(addMessage({ chatId, message }));
+              dispatch(updateConnectionLastMessage({ 
+                  chatId, 
+                  message, 
+                  currentUserId: user.id, 
+                  currentPath: location.pathname 
+              }));
+          }
         }
       };
 
