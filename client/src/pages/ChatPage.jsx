@@ -1,4 +1,4 @@
-// client/src/pages/ChatPage.jsx (FINAL - ADVANCED WALLPAPER FEATURE - FULL CODE)
+// client/src/pages/ChatPage.jsx (FINAL - With Wallpaper Scroll & Unread Count Fix)
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
@@ -19,10 +19,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "../components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../components/ui/dialog";
 import { getMessages, addMessage } from "../store/slices/chatSlice";
-import { setChatWallpaper } from "../store/slices/connectionsSlice";
+import { setChatWallpaper, clearUnreadCount } from "../store/slices/connectionsSlice"; // <-- Import clearUnreadCount
 import { updateConnectionLastMessage } from "../store/slices/connectionsSlice";
 import { sendMessage, uploadProfilePhoto, removeConnection, logCall, togglePinMessage, deleteMultipleMessages, forwardMessage, updateWallpaper } from "../utils/api";
 
+// ... (WallpaperDialog, MessageStatus, ForwardDialog components remain the same as before)
 const wallpapers = [
     { name: 'Default', url: '' },
     { name: 'Doodle', url: '/wallpapers/doodle.png' },
@@ -150,6 +151,7 @@ const ForwardDialog = ({ connections, onForward, currentUser }) => {
         </DialogContent>
     );
 };
+
 
 const ChatPage = () => {
     const { userId } = useParams();
@@ -355,6 +357,7 @@ const ChatPage = () => {
         if (currentUser && userId) {
             dispatch(getMessages(userId));
             socketService.emit('mark-messages-read', { chatUserId: userId });
+            dispatch(clearUnreadCount({ chatId: userId })); // <-- UNREAD COUNT FIX
 
             const handleCallMade = ({ signal, from, type }) => { 
                 setCaller(from); 
@@ -537,8 +540,9 @@ const ChatPage = () => {
                         </Button>
                     </motion.div>
                 )}
-
-                <div className="flex-1 overflow-y-auto custom-scrollbar chat-messages-container min-h-0">
+                
+                {/* <<< --- THIS IS THE WALLPAPER SCROLLING FIX --- >>> */}
+                <div className="flex-1 min-h-0 relative">
                     {currentWallpaper ? (
                         <div 
                             className="absolute inset-0 w-full h-full bg-cover bg-center z-0" 
@@ -549,60 +553,62 @@ const ChatPage = () => {
                     ) : (
                         <div className="static-pattern-background"></div>
                     )}
-                    
-                    <div className="p-3 flex flex-col relative z-10">
-                      {activeChatMessages.map((item, index) => {
-                          const showDateHeader = index === 0 || !isSameDay(new Date(activeChatMessages[index - 1].createdAt), new Date(item.createdAt));
-                          
-                          if (item._type === 'call') {
-                              const isOutgoing = item.caller._id === currentUser.id;
-                              const callTime = format(new Date(item.createdAt), 'p');
-                              let Icon = PhoneIncoming;
-                              let text = 'Incoming call';
-                              if (isOutgoing) { Icon = PhoneOutgoing; text = 'Outgoing call'; }
-                              if (item.status === 'missed' || item.status === 'rejected') { Icon = PhoneMissed; text = 'Missed call'; }
-                              return (
-                                <div key={item._id || index}>
-                                  {showDateHeader && (<div className="text-center text-xs text-slate-500 my-4 bg-slate-800/50 self-center px-3 py-1 rounded-full">{format(new Date(item.createdAt), 'MMMM d, yyyy')}</div>)}
-                                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center justify-center my-3">
-                                    <div className="flex items-center gap-2 text-sm text-slate-400 bg-slate-800/60 px-3 py-1.5 rounded-lg">
-                                      <Icon className={`h-4 w-4 ${item.status === 'missed' || item.status === 'rejected' ? 'text-red-400' : 'text-slate-500'}`} />
-                                      <span>{text}</span>
-                                      <span>•</span>
-                                      <span>{callTime}</span>
+
+                    <div className="relative z-10 h-full overflow-y-auto custom-scrollbar">
+                        <div className="p-3 flex flex-col">
+                            {activeChatMessages.map((item, index) => {
+                                const showDateHeader = index === 0 || !isSameDay(new Date(activeChatMessages[index - 1].createdAt), new Date(item.createdAt));
+                                
+                                if (item._type === 'call') {
+                                    const isOutgoing = item.caller._id === currentUser.id;
+                                    const callTime = format(new Date(item.createdAt), 'p');
+                                    let Icon = PhoneIncoming;
+                                    let text = 'Incoming call';
+                                    if (isOutgoing) { Icon = PhoneOutgoing; text = 'Outgoing call'; }
+                                    if (item.status === 'missed' || item.status === 'rejected') { Icon = PhoneMissed; text = 'Missed call'; }
+                                    return (
+                                        <div key={item._id || index}>
+                                        {showDateHeader && (<div className="text-center text-xs text-slate-500 my-4 bg-slate-800/50 self-center px-3 py-1 rounded-full">{format(new Date(item.createdAt), 'MMMM d, yyyy')}</div>)}
+                                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center justify-center my-3">
+                                            <div className="flex items-center gap-2 text-sm text-slate-400 bg-slate-800/60 px-3 py-1.5 rounded-lg">
+                                            <Icon className={`h-4 w-4 ${item.status === 'missed' || item.status === 'rejected' ? 'text-red-400' : 'text-slate-500'}`} />
+                                            <span>{text}</span>
+                                            <span>•</span>
+                                            <span>{callTime}</span>
+                                            </div>
+                                        </motion.div>
+                                        </div>
+                                    );
+                                }
+
+                                const isSender = item.sender?._id === currentUser.id;
+                                const isSelected = selectedMessages.has(item._id);
+
+                                return (
+                                    <div key={item._id || index} onContextMenu={(e) => { e.preventDefault(); handleMessageLongPress(item._id); }}>
+                                        {showDateHeader && (<div className="text-center text-xs text-slate-500 my-4 bg-slate-800/50 self-center px-3 py-1 rounded-full">{format(new Date(item.createdAt), 'MMMM d, yyyy')}</div>)}
+                                        <motion.div 
+                                            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} 
+                                            onClick={() => handleMessageClick(item._id)}
+                                            className={`flex items-end gap-1.5 my-0.5 rounded-lg transition-colors duration-200 ${isSender ? "justify-end" : "justify-start"} ${isSelected ? 'bg-indigo-500/20' : ''}`}
+                                        >
+                                            {!isSender && <Avatar className="h-6 w-6 self-end"><AvatarImage src={chatUser?.profilePhotoUrl}/><AvatarFallback className="text-xs">{chatUser?.name?.charAt(0)}</AvatarFallback></Avatar>}
+                                            <div className={`message-bubble max-w-[70%] md:max-w-[60%] rounded-xl ${isSender ? "bg-indigo-600 sent" : "bg-[#2a2a36] received"}`}>
+                                                {item.messageType === 'sticker' || item.messageType === 'image' ? ( <img src={item.content} alt={item.messageType} className="w-48 h-auto rounded-lg" /> ) : 
+                                                item.messageType === 'file' ? ( <a href={item.content} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-3 text-white hover:underline bg-slate-700/50 rounded-lg"><Paperclip className="h-8 w-8 flex-shrink-0 text-slate-400" /><span>{item.fileName || 'View Attached File'}</span></a> ) : 
+                                                ( <p className="px-2.5 py-1.5 text-sm break-words text-white">{item.content}</p> )}
+                                                
+                                                <span className="text-[10px] opacity-70 float-right mr-2 mb-1 self-end text-white/70 flex items-center">
+                                                    {formatTime(item.createdAt)}
+                                                    {isSender && item._type === 'message' && <MessageStatus status={item.status} />}
+                                                </span>
+                                            </div>
+                                        </motion.div>
                                     </div>
-                                  </motion.div>
-                                </div>
-                              );
-                          }
-
-                          const isSender = item.sender?._id === currentUser.id;
-                          const isSelected = selectedMessages.has(item._id);
-
-                          return (
-                              <div key={item._id || index} onContextMenu={(e) => { e.preventDefault(); handleMessageLongPress(item._id); }}>
-                                  {showDateHeader && (<div className="text-center text-xs text-slate-500 my-4 bg-slate-800/50 self-center px-3 py-1 rounded-full">{format(new Date(item.createdAt), 'MMMM d, yyyy')}</div>)}
-                                  <motion.div 
-                                      initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} 
-                                      onClick={() => handleMessageClick(item._id)}
-                                      className={`flex items-end gap-1.5 my-0.5 rounded-lg transition-colors duration-200 ${isSender ? "justify-end" : "justify-start"} ${isSelected ? 'bg-indigo-500/20' : ''}`}
-                                  >
-                                      {!isSender && <Avatar className="h-6 w-6 self-end"><AvatarImage src={chatUser?.profilePhotoUrl}/><AvatarFallback className="text-xs">{chatUser?.name?.charAt(0)}</AvatarFallback></Avatar>}
-                                      <div className={`message-bubble max-w-[70%] md:max-w-[60%] rounded-xl ${isSender ? "bg-indigo-600 sent" : "bg-[#2a2a36] received"}`}>
-                                          {item.messageType === 'sticker' || item.messageType === 'image' ? ( <img src={item.content} alt={item.messageType} className="w-48 h-auto rounded-lg" /> ) : 
-                                          item.messageType === 'file' ? ( <a href={item.content} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-3 text-white hover:underline bg-slate-700/50 rounded-lg"><Paperclip className="h-8 w-8 flex-shrink-0 text-slate-400" /><span>{item.fileName || 'View Attached File'}</span></a> ) : 
-                                          ( <p className="px-2.5 py-1.5 text-sm break-words text-white">{item.content}</p> )}
-                                          
-                                          <span className="text-[10px] opacity-70 float-right mr-2 mb-1 self-end text-white/70 flex items-center">
-                                            {formatTime(item.createdAt)}
-                                            {isSender && item._type === 'message' && <MessageStatus status={item.status} />}
-                                          </span>
-                                      </div>
-                                  </motion.div>
-                              </div>
-                          );
-                      })}
-                      <div ref={messagesEndRef} />
+                                );
+                            })}
+                            <div ref={messagesEndRef} />
+                        </div>
                     </div>
                 </div>
 

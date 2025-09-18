@@ -68,6 +68,16 @@ const connectionsSlice = createSlice({
         state.connections[connectionIndex].chatWallpaper = wallpaperUrl;
       }
     },
+    // <<< --- THIS IS THE NEW REDUCER --- >>>
+    clearUnreadCount: (state, action) => {
+      const { chatId } = action.payload;
+      const connectionIndex = state.connections.findIndex(conn => 
+        conn.users.some(user => user._id === chatId)
+      );
+      if (connectionIndex > -1) {
+        state.connections[connectionIndex].unreadCount = 0;
+      }
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -93,5 +103,6 @@ const connectionsSlice = createSlice({
   },
 });
 
-export const { setUserOnline, setUserOffline, updateConnectionLastMessage, setChatWallpaper } = connectionsSlice.actions;
+// <<< --- EXPORT THE NEW ACTION HERE --- >>>
+export const { setUserOnline, setUserOffline, updateConnectionLastMessage, setChatWallpaper, clearUnreadCount } = connectionsSlice.actions;
 export default connectionsSlice.reducer;
