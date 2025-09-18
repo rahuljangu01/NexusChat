@@ -1,15 +1,14 @@
-// client/src/store/slices/authSlice.js (SAHI CODE)
+// client/src/store/slices/authSlice.js (FINAL CORRECTED CODE)
 
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
-import axios from "axios";
+// <<< --- BADLAAV YAHAN HAI: Humne direct 'axios' ko hata kar apni 'api.js' file ko import kiya hai --- >>>
 import api, { uploadProfilePhoto } from "../../utils/api";
 
-const API_URL = process.env.REACT_APP_API_URL || "http://localhost:5000/api";
-
-// --- Async Thunks ---
+// --- Async Thunks (Ab yeh 'api' instance ka use karenge) ---
 export const loginUser = createAsyncThunk("auth/login", async (credentials, { rejectWithValue }) => {
   try {
-    const response = await axios.post(`${API_URL}/auth/login`, credentials);
+    // Ab yeh automatically sahi URL (live ya local) par request bhejega
+    const response = await api.post(`/auth/login`, credentials);
     localStorage.setItem("token", response.data.token);
     return response.data;
   } catch (error) {
@@ -19,7 +18,8 @@ export const loginUser = createAsyncThunk("auth/login", async (credentials, { re
 
 export const registerUser = createAsyncThunk("auth/register", async (userData, { rejectWithValue }) => {
   try {
-    const response = await axios.post(`${API_URL}/auth/register`, userData);
+    // Ab yeh bhi sahi URL use karega
+    const response = await api.post(`/auth/register`, userData);
     localStorage.setItem("token", response.data.token);
     return response.data;
   } catch (error) {
@@ -29,11 +29,8 @@ export const registerUser = createAsyncThunk("auth/register", async (userData, {
 
 export const getCurrentUser = createAsyncThunk("auth/getCurrentUser", async (_, { rejectWithValue }) => {
   try {
-    const token = localStorage.getItem("token");
-    if (!token) throw new Error("No token found");
-    const response = await axios.get(`${API_URL}/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    // Ab yeh bhi sahi URL use karega
+    const response = await api.get(`/auth/me`);
     return response.data;
   } catch (error) {
     localStorage.removeItem("token");
@@ -45,7 +42,7 @@ export const uploadAndUpdateProfilePhoto = createAsyncThunk(
   "auth/uploadPhoto",
   async (file, { dispatch, rejectWithValue }) => {
     try {
-      const uploadedFile = await uploadProfilePhoto(file);
+      const uploadedFile = await uploadProfilePhoto(file); // Yeh function pehle se hi sahi 'api' use kar raha tha
       const profilePhotoUrl = uploadedFile.url;
       const updatedUserData = await dispatch(updateUserProfile({ profilePhotoUrl })).unwrap();
       return updatedUserData;
@@ -59,6 +56,7 @@ export const updateUserProfile = createAsyncThunk(
   "auth/updateProfile",
   async (profileData, { rejectWithValue }) => {
     try {
+      // Yeh pehle se hi sahi 'api' use kar raha tha
       const response = await api.put(`/auth/profile`, profileData);
       return response.data.user;
     } catch (error) {
@@ -67,7 +65,7 @@ export const updateUserProfile = createAsyncThunk(
   }
 );
 
-// --- Slice Definition ---
+// --- Slice Definition (Ismein koi badlaav nahi hai) ---
 const initialState = {
   user: null,
   token: localStorage.getItem("token"),
