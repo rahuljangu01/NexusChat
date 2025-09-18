@@ -339,10 +339,10 @@ const ChatPage = () => {
     };
 
     useEffect(() => {
-        if (currentUser && userId) {
+          if (currentUser && userId) {
             dispatch(getMessages(userId));
             socketService.emit('mark-messages-read', { chatUserId: userId });
-            dispatch(fetchConnections(currentUser.id)); 
+            dispatch(fetchConnections(currentUser.id));
             
             const handleCallMade = ({ signal, from, type }) => { setCaller(from); setCallerSignal(signal); setCallType(type); setCallState('incoming'); };
             const handleCallEnded = () => leaveCall(false);

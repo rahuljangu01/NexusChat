@@ -96,7 +96,7 @@ const connectionsSlice = createSlice({
         
         const acceptedConnections = connections.filter(c => c.status === 'accepted');
         
-        acceptedConnections.sort((a, b) => {
+         acceptedConnections.sort((a, b) => {
             const timeA = a.lastMessage ? new Date(a.lastMessage.createdAt) : new Date(a.updatedAt || 0);
             const timeB = b.lastMessage ? new Date(b.lastMessage.createdAt) : new Date(b.updatedAt || 0);
             return timeB - timeA;

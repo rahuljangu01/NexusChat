@@ -1,4 +1,4 @@
-// client/src/App.jsx (FINAL - CORRECTED DISPATCH LOGIC)
+// client/src/App.jsx (FINAL - SERVER-DRIVEN STATE)
 
 import { useEffect } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom"; 
@@ -23,7 +23,7 @@ import { MessageSquare } from "lucide-react";
 // Service & Redux Imports
 import { socketService } from "./services/socketService";
 import { addMessage, updateSentMessagesStatus } from "./store/slices/chatSlice";
-import { setUserOnline, setUserOffline, updateConnectionLastMessage } from "./store/slices/connectionsSlice";
+import { setUserOnline, setUserOffline, fetchConnections } from "./store/slices/connectionsSlice";
 
 const DashboardWelcome = () => (
     <motion.main 
@@ -59,13 +59,12 @@ function App() {
           const chatId = message.sender._id === user.id ? message.receiver._id : message.sender._id;
     
           if(chatId) {
+              // Add the message to the specific chat's message list
               dispatch(addMessage({ chatId, message }));
-              dispatch(updateConnectionLastMessage({ 
-                  chatId, 
-                  message, 
-                  currentUserId: user.id, 
-                  currentPath: location.pathname 
-              }));
+              
+              // Re-fetch the entire connections list. This is the most reliable way
+              // to update the last message and the unread count from the server.
+              dispatch(fetchConnections(user.id));
           }
         } 
       };
@@ -92,7 +91,7 @@ function App() {
         socketService.disconnect();
       };
     }
-  }, [isAuthenticated, token, user, dispatch, location.pathname]);
+  }, [isAuthenticated, token, user, dispatch]); // We no longer need location.pathname here
 
   return (
     <AnimatePresence mode="wait">
