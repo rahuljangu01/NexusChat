@@ -46,6 +46,7 @@
     "lucide-react": "^0.263.1",
     "next-themes": "^0.4.6",
     "react": "^18.2.0",
+    "react-app-rewired": "^2.2.1",
     "react-day-picker": "^9.8.1",
     "react-dom": "^18.2.0",
     "react-hook-form": "^7.62.0",
@@ -63,9 +64,9 @@
     "web-vitals": "^2.1.4"
   },
   "scripts": {
-    "start": "cross-env PORT=3001 react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
+    "start": "react-app-rewired start",
+    "build": "react-app-rewired build",
+    "test": "react-app-rewired test",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {
@@ -88,8 +89,9 @@
   },
   "devDependencies": {
     "autoprefixer": "^10.4.14",
-    "cross-env": "^10.0.0",
+    "buffer": "^6.0.3",
     "postcss": "^8.4.24",
+    "process": "^0.11.10",
     "tailwindcss": "^3.3.0"
   },
   "proxy": "http://localhost:5000"

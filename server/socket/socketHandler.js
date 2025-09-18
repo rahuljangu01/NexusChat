@@ -1,16 +1,15 @@
-// server/socket/socketHandler.js (100% COMPLETE CODE)
+// server/socket/socketHandler.js (FINAL & CORRECTED)
 
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const Message = require("../models/Message");
+const Connection = require("../models/Connection"); // Ensure Connection is imported
 
 const userSocketMap = {}; // Maps userId to socketId
 
 const socketHandler = (io) => {
-  // Make userSocketMap accessible in other parts of the app (like controllers)
   io.userSocketMap = userSocketMap;
 
-  // Socket Authentication Middleware
   io.use(async (socket, next) => {
     try {
       const token = socket.handshake.auth.token;
@@ -36,11 +35,9 @@ const socketHandler = (io) => {
     userSocketMap[userId] = socket.id;
     socket.join(userId);
 
-    // Broadcast user online status
     socket.broadcast.emit("user-online", { userId });
     User.findByIdAndUpdate(userId, { isOnline: true }).exec();
 
-    // Mark 'sent' messages as 'delivered' when user comes online
     Message.find({ receiver: userId, status: 'sent' }).distinct('sender').then(senderIds => {
         Message.updateMany(
             { receiver: userId, status: 'sent' },
@@ -57,7 +54,6 @@ const socketHandler = (io) => {
         });
     });
 
-    // --- 1-ON-1 CHAT EVENTS ---
     socket.on("join-chat", (otherUserId) => {
       const chatRoom = [userId, otherUserId].sort().join("-");
       socket.join(chatRoom);
@@ -83,14 +79,34 @@ const socketHandler = (io) => {
     
     socket.on('typing', (data) => io.to(data.receiverId).emit("user-typing", { userId }));
     socket.on('stop-typing', (data) => io.to(data.receiverId).emit("user-stop-typing", { userId }));
+    
+    socket.on('send-message', async (data, callback) => {
+        try {
+            const { receiverId, content, messageType = "text", tempId, fileName, fileSize } = data;
+            const senderId = socket.userId;
+            const connection = await Connection.findOne({ users: { $all: [senderId, receiverId] }, status: "accepted" });
+            if (!connection) {
+                return callback({ error: "You can only message connected users." });
+            }
+            let message = await Message.create({ sender: senderId, receiver: receiverId, content, messageType, fileName, fileSize });
+            message = await message.populate("sender receiver", "name profilePhotoUrl isOnline");
+            const receiverSocketId = userSocketMap[receiverId];
+            if (receiverSocketId) {
+                io.to(receiverSocketId).emit("receive-message", { ...message.toObject(), _type: 'message' });
+            }
+            callback({ message: { ...message.toObject(), _type: 'message' } });
+        } catch (error) {
+            console.error(`Error in socket send-message from ${socket.userId}:`, error);
+            callback({ error: "Server error while sending message." });
+        }
+    });
 
-    // --- 1-ON-1 WEBRTC SIGNALING ---
     socket.on("call-user", (data) => {
         const targetSocketId = userSocketMap[data.userToCall];
         if (targetSocketId) {
             io.to(targetSocketId).emit("call-made", { 
                 signal: data.signalData, 
-                from: data.from, // This is now a full object {id, name, profilePhotoUrl}
+                from: data.from,
                 type: data.type 
             });
         }
@@ -108,34 +124,17 @@ const socketHandler = (io) => {
         }
     });
     
-    // --- GROUP MANAGEMENT ---
-    socket.on('join-group-room', (groupId) => {
-        socket.join(groupId);
-    });
-    socket.on('leave-group-room', (groupId) => {
-        socket.leave(groupId);
-    });
-
-    // --- GROUP CALL LOGIC ---
-    socket.on('start-group-call', ({ groupId, from, callType }) => {
-        socket.to(groupId).emit('incoming-group-call', { from, groupId, callType });
-    });
-
-    socket.on('join-group-call', ({ groupId, from }) => {
-        socket.to(groupId).emit('new-user-joined-group-call', { from });
-    });
-    
+    socket.on('join-group-room', (groupId) => { socket.join(groupId); });
+    socket.on('leave-group-room', (groupId) => { socket.leave(groupId); });
+    socket.on('start-group-call', ({ groupId, from, callType }) => { socket.to(groupId).emit('incoming-group-call', { from, groupId, callType }); });
+    socket.on('join-group-call', ({ groupId, from }) => { socket.to(groupId).emit('new-user-joined-group-call', { from }); });
     socket.on('return-signal-group', ({ signal, to }) => {
         const targetSocketId = userSocketMap[to];
         if (targetSocketId) {
             io.to(targetSocketId).emit('receiving-returned-signal-group', { signal, from: { id: userId, name: socket.user.name } });
         }
     });
-    
-    socket.on('leave-group-call', ({ groupId, userId }) => {
-        socket.to(groupId).emit('user-left-group-call', { userId });
-    });
-
+    socket.on('leave-group-call', ({ groupId, userId }) => { socket.to(groupId).emit('user-left-group-call', { userId }); });
     socket.on('mark-group-messages-read', async ({ groupId }) => {
       try {
         await Message.updateMany(
@@ -147,7 +146,6 @@ const socketHandler = (io) => {
       }
     });
 
-    // --- DISCONNECT LOGIC ---
     socket.on("disconnect", () => {
       console.log(`User ${socket.user.name} disconnected`);
       delete userSocketMap[userId];

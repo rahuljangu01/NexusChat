@@ -1,4 +1,4 @@
-// client/src/store/slices/connectionsSlice.js (FINAL & SAFE)
+// client/src/store/connectionsSlice.js (FINAL & SAFE)
 
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import { getMyConnections } from "../../utils/api";
@@ -55,11 +55,8 @@ const connectionsSlice = createSlice({
       if (connectionIndex > -1) {
         const connectionToUpdate = { ...state.connections[connectionIndex] };
         
-        // Update the last message
         connectionToUpdate.lastMessage = message;
         
-        // Safely check currentPath before using .includes()
-        // Increment unread count only if it's a received message and user is not on that chat screen
         if (currentPath && message.sender._id !== currentUserId && !currentPath.includes(chatId)) {
             if (!connectionToUpdate.unreadCount) {
                 connectionToUpdate.unreadCount = 0;
@@ -67,7 +64,6 @@ const connectionsSlice = createSlice({
             connectionToUpdate.unreadCount += 1;
         }
         
-        // Move the updated connection to the top of the list
         state.connections.splice(connectionIndex, 1);
         state.connections.unshift(connectionToUpdate);
       }

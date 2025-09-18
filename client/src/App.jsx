@@ -54,7 +54,6 @@ function App() {
       socketService.connect(token);
       
       const handleReceiveMessage = (message) => {
-        // This logic now ONLY handles 1-on-1 messages
         if (message.sender && message.receiver) {
           const chatId = message.sender._id === user.id ? message.receiver._id : message.sender._id;
     
@@ -67,7 +66,7 @@ function App() {
                   currentPath: location.pathname 
               }));
           }
-        }
+        } 
       };
 
       const handleMessagesDelivered = ({ chatPartnerId }) => {

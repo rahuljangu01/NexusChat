@@ -1,4 +1,4 @@
-// client/src/pages/StatusPage.jsx (COMPACT UI - FULL CODE)
+// client/src/pages/StatusPage.jsx (FINAL - UPLOAD FIX)
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSelector } from "react-redux";
@@ -39,7 +39,7 @@ const UploadStatusDialog = ({ onStatusUploaded }) => {
                 mediaType: file.type.startsWith("image") ? "image" : "video",
                 caption: caption
             });
-            onStatusUploaded();
+            onStatusUploaded(); // This tells the parent to refresh
         } catch (error) {
             console.error("Status upload failed:", error);
             alert("Failed to upload status.");
@@ -210,8 +210,8 @@ const StatusPage = () => {
                 <div>
                     <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-2">Recent Updates</h2>
                     <div className="space-y-2">
-                        {friendStatusGroups.map((group) => group.user && (
-                            <motion.div key={group.user._id} className="cursor-pointer p-2 rounded-lg hover:bg-slate-800/50" onClick={() => { setActiveStatusIndex(0); setActiveGroupIndex(statusGroups.findIndex(g => g.user._id === group.user._id)); }} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: statusGroups.findIndex(g => g.user._id === group.user._id) * 0.05 }}>
+                        {friendStatusGroups.map((group, groupIndex) => group.user && (
+                            <motion.div key={group.user._id} className="cursor-pointer p-2 rounded-lg hover:bg-slate-800/50" onClick={() => { setActiveStatusIndex(0); setActiveGroupIndex(statusGroups.findIndex(g => g.user._id === group.user._id)); }} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: groupIndex * 0.05 }}>
                                 <div className="flex items-center gap-3">
                                     <div className="relative p-0.5 rounded-full bg-gradient-to-tr from-yellow-400 to-pink-500">
                                       <Avatar className="h-12 w-12 border-2 border-[#161b22]"><AvatarImage src={group.user.profilePhotoUrl}/><AvatarFallback>{group.user.name.charAt(0)}</AvatarFallback></Avatar>
