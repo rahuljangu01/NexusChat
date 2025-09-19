@@ -1,8 +1,8 @@
-// server/controllers/authController.js (FINAL - WITH REAL-TIME PROFILE UPDATE)
+// server/controllers/authController.js (FINAL - WITH REAL-TIME PROFILE UPDATE DEBUGGING)
 
 const { validationResult } = require("express-validator");
 const User = require("../models/User");
-const Connection = require("../models/Connection"); // <<< --- YEH ZAROORI IMPORT HAI --- >>>
+const Connection = require("../models/Connection");
 const generateToken = require("../utils/generateToken");
 const { sendVerificationEmail } = require("../utils/sendEmail");
 
@@ -165,16 +165,21 @@ const updateProfile = async (req, res) => {
     }).filter(id => id !== null);
 
     const userPayload = {
-        _id: updatedUser._id,
+        _id: updatedUser._id.toString(),
         name: updatedUser.name,
         profilePhotoUrl: updatedUser.profilePhotoUrl,
         isOnline: updatedUser.isOnline,
     };
 
+    console.log(`[Profile Update] User ${req.user.name} updated profile. Broadcasting to friends:`, friendIds);
+
     friendIds.forEach(friendId => {
         const friendSocketId = userSocketMap[friendId];
         if (friendSocketId) {
+            console.log(`[Socket Emit] Sending 'connection-profile-updated' to friend ${friendId} via socket ${friendSocketId}`);
             io.to(friendSocketId).emit('connection-profile-updated', userPayload);
+        } else {
+            console.log(`[Socket Skip] Friend ${friendId} is not online.`);
         }
     });
 

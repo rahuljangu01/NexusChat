@@ -1,4 +1,4 @@
-// client/src/App.jsx (FINAL - WITH REAL-TIME PROFILE UPDATES)
+// client/src/App.jsx (FINAL - WITH REAL-TIME PROFILE UPDATE DEBUGGING)
 
 import { useEffect } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom"; 
@@ -74,18 +74,18 @@ function App() {
         dispatch(updateSentMessagesStatus({ chatPartnerId, status: 'read' }));
       };
 
-      // <<< --- NEW EVENT HANDLER --- >>>
-       const handleProfileUpdate = (updatedUser) => {
+      const handleProfileUpdate = (updatedUser) => {
+        console.log("[Socket Receive] Received 'connection-profile-updated' event for user:", updatedUser);
         dispatch(updateConnectionProfile(updatedUser));
       };
-        
+      
       // Setup Listeners
       socketService.onReceiveMessage(handleReceiveMessage);
       socketService.onUserOnline((data) => dispatch(setUserOnline(data)));
       socketService.onUserOffline((data) => dispatch(setUserOffline(data)));
       socketService.socket.on('messages-delivered', handleMessagesDelivered);
       socketService.socket.on('messages-read', handleMessagesRead);
-      socketService.socket.on('connection-profile-updated', handleProfileUpdate); // <<< --- NEW LISTENER --- >>>
+      socketService.socket.on('connection-profile-updated', handleProfileUpdate);
 
       // Cleanup function
       return () => {
@@ -94,7 +94,7 @@ function App() {
         socketService.off("user-offline");
         socketService.socket.off('messages-delivered', handleMessagesDelivered);
         socketService.socket.off('messages-read', handleMessagesRead);
-        socketService.socket.off('connection-profile-updated', handleProfileUpdate); // <<< --- NEW CLEANUP --- >>>
+        socketService.socket.off('connection-profile-updated', handleProfileUpdate);
         socketService.disconnect();
       };
     }
