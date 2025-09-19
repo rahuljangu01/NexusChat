@@ -23,7 +23,7 @@ import { MessageSquare } from "lucide-react";
 // Service & Redux Imports
 import { socketService } from "./services/socketService";
 import { addMessage, updateSentMessagesStatus } from "./store/slices/chatSlice";
-import { setUserOnline, setUserOffline, fetchConnections } from "./store/slices/connectionsSlice";
+import { setUserOnline, setUserOffline,  updateConnectionLastMessage, incrementUnreadCount } from "./store/slices/connectionsSlice";
 
 const DashboardWelcome = () => (
     <motion.main 
@@ -54,17 +54,20 @@ function App() {
       socketService.connect(token);
       
       const handleReceiveMessage = (message) => {
-        // This logic now ONLY handles 1-on-1 messages
         if (message.sender && message.receiver) {
           const chatId = message.sender._id === user.id ? message.receiver._id : message.sender._id;
     
           if(chatId) {
-              // Add the message to the specific chat's message list
+              // Message ko chat window mein add karo
               dispatch(addMessage({ chatId, message }));
-              
-              // Re-fetch the entire connections list. This is the most reliable way
-              // to update the last message and the unread count from the server.
-              dispatch(fetchConnections(user.id));
+
+              // Chat list mein last message ko update karo
+              dispatch(updateConnectionLastMessage({ chatId, message }));
+
+              // Agar user uss chat par nahi hai, toh unread count badhao
+              if (message.sender._id !== user.id && !location.pathname.includes(chatId)) {
+                  dispatch(incrementUnreadCount({ chatId }));
+              }
           }
         } 
       };
@@ -91,7 +94,7 @@ function App() {
         socketService.disconnect();
       };
     }
-  }, [isAuthenticated, token, user, dispatch]);
+  }, [isAuthenticated, token, user, dispatch, location.pathname]);
 
   return (
     <AnimatePresence mode="wait">

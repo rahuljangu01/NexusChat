@@ -1,4 +1,4 @@
-// client/src/pages/ChatPage.jsx (FINAL - SYNTAX FIX)
+// client/src/pages/ChatPage.jsx (FINAL - SERVER-DRIVEN UNREAD COUNT FIX)
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
@@ -303,7 +303,7 @@ const ChatPage = () => {
         if (currentUser && userId) {
             dispatch(getMessages(userId));
             socketService.emit('mark-messages-read', { chatUserId: userId });
-            dispatch(fetchConnections(currentUser.id));
+            dispatch(fetchConnections(currentUser.id)); 
             
             const handleCallMade = ({ signal, from, type }) => { setCaller(from); setCallerSignal(signal); setCallType(type); setCallState('incoming'); };
             const handleCallEnded = () => leaveCall(false);
