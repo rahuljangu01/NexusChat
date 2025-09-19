@@ -1,7 +1,8 @@
-// server/controllers/authController.js (FINAL - With Verification & Domain Restriction)
+// server/controllers/authController.js (FINAL - WITH REAL-TIME PROFILE UPDATE)
 
 const { validationResult } = require("express-validator");
 const User = require("../models/User");
+const Connection = require("../models/Connection"); // <<< --- YEH ZAROORI IMPORT HAI --- >>>
 const generateToken = require("../utils/generateToken");
 const { sendVerificationEmail } = require("../utils/sendEmail");
 
@@ -17,7 +18,6 @@ const sendVerification = async (req, res) => {
       return res.status(400).json({ message: "Email is required." });
     }
 
-    // <<< --- DOMAIN RESTRICTION IS HERE --- >>>
     const emailDomain = email.split('@')[1];
     if (emailDomain !== 'lpu.in') {
       return res.status(400).json({ message: "Only @lpu.in email addresses are allowed." });
@@ -28,10 +28,10 @@ const sendVerification = async (req, res) => {
       return res.status(400).json({ message: "This email is already registered." });
     }
 
-    const code = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit OTP
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
     verificationCodes[email] = {
       code,
-      expiresAt: Date.now() + 10 * 60 * 1000, // 10 minute expiration
+      expiresAt: Date.now() + 10 * 60 * 1000,
     };
 
     await sendVerificationEmail(email, code);
@@ -67,7 +67,7 @@ const verifyAndRegister = async (req, res) => {
     }
 
     const user = await User.create({ name, email, collegeId, password, department, year });
-    delete verificationCodes[email]; // Clean up used code
+    delete verificationCodes[email];
 
     const token = generateToken(user._id);
     res.status(201).json({
@@ -152,32 +152,43 @@ const updateProfile = async (req, res) => {
       userToUpdate.interests = Array.isArray(interests) ? interests : interests.split(',').map(interest => interest.trim());
     }
     if (profilePhotoUrl) userToUpdate.profilePhotoUrl = profilePhotoUrl;
+    
     const updatedUser = await userToUpdate.save();
+
     const io = req.app.get('io');
-        const userSocketMap = io.userSocketMap;
-        const connections = await Connection.find({ users: req.user.id, status: 'accepted' });
-        const friendIds = connections.map(c => c.users.find(id => id.toString() !== req.user.id).toString());
+    const userSocketMap = io.userSocketMap;
+    const connections = await Connection.find({ users: req.user.id, status: 'accepted' }).lean();
 
-        const userPayload = {
-            _id: updatedUser._id,
-            name: updatedUser.name,
-            profilePhotoUrl: updatedUser.profilePhotoUrl,
-            isOnline: updatedUser.isOnline,
-        };
+    const friendIds = connections.map(c => {
+        const friend = c.users.find(id => id.toString() !== req.user.id.toString());
+        return friend ? friend.toString() : null;
+    }).filter(id => id !== null);
 
-        friendIds.forEach(friendId => {
-            const friendSocketId = userSocketMap[friendId];
-            if (friendSocketId) {
-                io.to(friendSocketId).emit('connection-profile-updated', userPayload);
-            }
-        });
+    const userPayload = {
+        _id: updatedUser._id,
+        name: updatedUser.name,
+        profilePhotoUrl: updatedUser.profilePhotoUrl,
+        isOnline: updatedUser.isOnline,
+    };
+
+    friendIds.forEach(friendId => {
+        const friendSocketId = userSocketMap[friendId];
+        if (friendSocketId) {
+            io.to(friendSocketId).emit('connection-profile-updated', userPayload);
+        }
+    });
+
     res.json({
       success: true,
       message: "Profile updated successfully!",
       user: {
-        id: updatedUser._id, name: updatedUser.name, email: updatedUser.email,
-        collegeId: updatedUser.collegeId, department: updatedUser.department,
-        year: updatedUser.year, profilePhotoUrl: updatedUser.profilePhotoUrl,
+        id: updatedUser._id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        collegeId: updatedUser.collegeId,
+        department: updatedUser.department,
+        year: updatedUser.year,
+        profilePhotoUrl: updatedUser.profilePhotoUrl,
         interests: updatedUser.interests,
       },
     });
@@ -198,6 +209,9 @@ const changePassword = async (req, res) => {
         return res.status(400).json({ message: "Current password is required." });
     }
     const user = await User.findById(req.user.id).select("+password");
+    if (!user) {
+        return res.status(404).json({ message: "User not found" });
+    }
     const isMatch = await user.comparePassword(currentPassword);
     if (!isMatch) {
       return res.status(400).json({ message: "Current password is incorrect" });
