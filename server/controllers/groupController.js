@@ -117,7 +117,7 @@ const getGroupById = async (req, res) => {
     group.members = group.members.filter(member => member.user !== null);
     
     const isMember = group.members.some((member) => member.user._id.toString() === req.user.id);
-    if (!isMember && group.createdBy._id.toString() !== req.user.id) {
+    if (!isMember && group.createdBy._id.toString() !== req.user.id.toString()) {
          return res.status(403).json({ message: "You are not a member of this group" });
     }
 

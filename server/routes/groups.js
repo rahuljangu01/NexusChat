@@ -10,7 +10,6 @@ const {
   leaveGroup,
   updateGroup,
   deleteGroup,
-  addMember,
   removeMember,
   updateMemberRole,
   sendGroupMessage,
@@ -34,7 +33,6 @@ router.post("/:groupId/join", protect, joinGroup);
 router.post("/:groupId/leave", protect, leaveGroup);
 
 // Member Management Routes
-router.post("/:groupId/members/:userId", protect, addMember);
 router.delete("/:groupId/members/:userId", protect, removeMember);
 router.put("/:groupId/members/:userId/role", protect, updateMemberRole);
 
