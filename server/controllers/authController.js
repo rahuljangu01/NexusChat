@@ -153,6 +153,24 @@ const updateProfile = async (req, res) => {
     }
     if (profilePhotoUrl) userToUpdate.profilePhotoUrl = profilePhotoUrl;
     const updatedUser = await userToUpdate.save();
+    const io = req.app.get('io');
+        const userSocketMap = io.userSocketMap;
+        const connections = await Connection.find({ users: req.user.id, status: 'accepted' });
+        const friendIds = connections.map(c => c.users.find(id => id.toString() !== req.user.id).toString());
+
+        const userPayload = {
+            _id: updatedUser._id,
+            name: updatedUser.name,
+            profilePhotoUrl: updatedUser.profilePhotoUrl,
+            isOnline: updatedUser.isOnline,
+        };
+
+        friendIds.forEach(friendId => {
+            const friendSocketId = userSocketMap[friendId];
+            if (friendSocketId) {
+                io.to(friendSocketId).emit('connection-profile-updated', userPayload);
+            }
+        });
     res.json({
       success: true,
       message: "Profile updated successfully!",

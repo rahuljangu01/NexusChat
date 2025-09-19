@@ -76,6 +76,21 @@ const socketHandler = (io) => {
         console.error("Error marking messages as read:", error);
       }
     });
+    socket.on('profile-update', async (updatedUser) => {
+    try {
+        const connections = await Connection.find({ users: userId, status: 'accepted' });
+        const friendIds = connections.map(c => c.users.find(id => id.toString() !== userId).toString());
+
+        friendIds.forEach(friendId => {
+            const friendSocketId = userSocketMap[friendId];
+            if (friendSocketId) {
+                io.to(friendSocketId).emit('connection-profile-updated', updatedUser);
+            }
+        });
+    } catch (error) {
+        console.error('Error broadcasting profile a`date:', error);
+    }
+});
     
     socket.on('typing', (data) => io.to(data.receiverId).emit("user-typing", { userId }));
     socket.on('stop-typing', (data) => io.to(data.receiverId).emit("user-stop-typing", { userId }));

@@ -1,4 +1,4 @@
-// client/src/App.jsx (FINAL - SERVER-DRIVEN STATE)
+// client/src/App.jsx (FINAL - WITH REAL-TIME PROFILE UPDATES)
 
 import { useEffect } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom"; 
@@ -23,7 +23,7 @@ import { MessageSquare } from "lucide-react";
 // Service & Redux Imports
 import { socketService } from "./services/socketService";
 import { addMessage, updateSentMessagesStatus } from "./store/slices/chatSlice";
-import { setUserOnline, setUserOffline,  updateConnectionLastMessage, incrementUnreadCount } from "./store/slices/connectionsSlice";
+import { setUserOnline, setUserOffline, updateConnectionLastMessage, incrementUnreadCount, updateConnectionProfile } from "./store/slices/connectionsSlice";
 
 const DashboardWelcome = () => (
     <motion.main 
@@ -58,39 +58,43 @@ function App() {
           const chatId = message.sender._id === user.id ? message.receiver._id : message.sender._id;
     
           if(chatId) {
-              // Message ko chat window mein add karo
               dispatch(addMessage({ chatId, message }));
-
-              // Chat list mein last message ko update karo
               dispatch(updateConnectionLastMessage({ chatId, message }));
-
-              // Agar user uss chat par nahi hai, toh unread count badhao
               if (message.sender._id !== user.id && !location.pathname.includes(chatId)) {
                   dispatch(incrementUnreadCount({ chatId }));
               }
           }
         } 
       };
-
+      
       const handleMessagesDelivered = ({ chatPartnerId }) => {
         dispatch(updateSentMessagesStatus({ chatPartnerId, status: 'delivered' }));
       };
       const handleMessagesRead = ({ chatPartnerId }) => {
         dispatch(updateSentMessagesStatus({ chatPartnerId, status: 'read' }));
       };
+
+      // <<< --- NEW EVENT HANDLER --- >>>
+      const handleProfileUpdate = (updatedUser) => {
+        dispatch(updateConnectionProfile(updatedUser));
+      };
       
+      // Setup Listeners
       socketService.onReceiveMessage(handleReceiveMessage);
       socketService.onUserOnline((data) => dispatch(setUserOnline(data)));
       socketService.onUserOffline((data) => dispatch(setUserOffline(data)));
       socketService.socket.on('messages-delivered', handleMessagesDelivered);
       socketService.socket.on('messages-read', handleMessagesRead);
+      socketService.socket.on('connection-profile-updated', handleProfileUpdate); // <<< --- NEW LISTENER --- >>>
 
+      // Cleanup function
       return () => {
         socketService.off("receive-message", handleReceiveMessage);
         socketService.off("user-online");
         socketService.off("user-offline");
         socketService.socket.off('messages-delivered', handleMessagesDelivered);
         socketService.socket.off('messages-read', handleMessagesRead);
+        socketService.socket.off('connection-profile-updated', handleProfileUpdate); // <<< --- NEW CLEANUP --- >>>
         socketService.disconnect();
       };
     }

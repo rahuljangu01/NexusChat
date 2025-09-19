@@ -1,4 +1,4 @@
-// client/src/store/connectionsSlice.js (FINAL, ROBUST VERSION)
+// client/src/store/connectionsSlice.js (FINAL, ROBUST VERSION WITH PROFILE UPDATE)
 
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import { getMyConnections } from "../../utils/api";
@@ -53,7 +53,6 @@ const connectionsSlice = createSlice({
       if (connectionIndex > -1) {
         const connectionToUpdate = state.connections[connectionIndex];
         connectionToUpdate.lastMessage = message;
-        // Move to top of the list
         state.connections.splice(connectionIndex, 1);
         state.connections.unshift(connectionToUpdate);
       }
@@ -86,6 +85,20 @@ const connectionsSlice = createSlice({
         state.connections[connectionIndex].chatWallpaper = wallpaperUrl;
       }
     },
+    // <<< --- YEH NAYA, ZAROORI REDUCER HAI --- >>>
+    updateConnectionProfile: (state, action) => {
+        const updatedUser = action.payload;
+        state.connections = state.connections.map(conn => {
+            const userIndex = conn.users.findIndex(u => u?._id === updatedUser._id);
+            if (userIndex === -1) {
+                return conn;
+            }
+            const updatedUsers = [...conn.users];
+            // Purane user data ko naye data ke saath merge karo
+            updatedUsers[userIndex] = { ...updatedUsers[userIndex], ...updatedUser };
+            return { ...conn, users: updatedUsers };
+        });
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -106,5 +119,6 @@ const connectionsSlice = createSlice({
   },
 });
 
-export const { setUserOnline, setUserOffline, updateConnectionLastMessage, incrementUnreadCount, clearUnreadCount, setChatWallpaper } = connectionsSlice.actions;
+// <<< --- YAHAN EXPORT MEIN BHI ADD KARNA HAI --- >>>
+export const { setUserOnline, setUserOffline, updateConnectionLastMessage, incrementUnreadCount, clearUnreadCount, setChatWallpaper, updateConnectionProfile } = connectionsSlice.actions;
 export default connectionsSlice.reducer;
