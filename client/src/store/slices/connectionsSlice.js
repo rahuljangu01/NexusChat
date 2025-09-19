@@ -87,18 +87,16 @@ const connectionsSlice = createSlice({
     },
     // <<< --- YEH NAYA, ZAROORI REDUCER HAI --- >>>
     updateConnectionProfile: (state, action) => {
-    const updatedUser = action.payload; // This payload is now the full object from the server
-    state.connections = state.connections.map(conn => {
-        const userIndex = conn.users.findIndex(u => u?._id === updatedUser._id);
-        if (userIndex === -1) {
-            return conn;
-        }
-        const updatedUsers = [...conn.users];
-        // Merge old user data with the new data
-        updatedUsers[userIndex] = { ...updatedUsers[userIndex], ...updatedUser };
-        return { ...conn, users: updatedUsers };
-    });
-  },
+        const updatedUser = action.payload;
+        state.connections = state.connections.map(conn => {
+            const userIndex = conn.users.findIndex(u => u?._id === updatedUser._id);
+            if (userIndex === -1) return conn;
+            
+            const updatedUsers = [...conn.users];
+            updatedUsers[userIndex] = { ...updatedUsers[userIndex], ...updatedUser };
+            return { ...conn, users: updatedUsers };
+        });
+    },
   },
   extraReducers: (builder) => {
     builder

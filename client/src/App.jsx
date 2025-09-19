@@ -75,10 +75,10 @@ function App() {
       };
 
       // <<< --- NEW EVENT HANDLER --- >>>
-      const handleProfileUpdate = (updatedUser) => {
+       const handleProfileUpdate = (updatedUser) => {
         dispatch(updateConnectionProfile(updatedUser));
       };
-      
+        
       // Setup Listeners
       socketService.onReceiveMessage(handleReceiveMessage);
       socketService.onUserOnline((data) => dispatch(setUserOnline(data)));
