@@ -1,12 +1,11 @@
-// server/controllers/messageController.js (FULL & COMPLETE CODE with Pin/Unpin Fix)
+// server/controllers/messageController.js (FINAL & CORRECTED)
 
 const Message = require("../models/Message");
 const CallRecord = require("../models/CallRecord");
-const User = require("../models/User");
 const Connection = require("../models/Connection");
 
 // Send a new message
-const sendMessage = async (req, res) => {
+exports.sendMessage = async (req, res) => {
   try {
     const { receiverId, content, messageType = "text", fileName, fileSize } = req.body;
     const senderId = req.user.id;
@@ -23,17 +22,13 @@ const sendMessage = async (req, res) => {
     let message = await Message.create({ sender: senderId, receiver: receiverId, content, messageType, fileName, fileSize });
     message = await message.populate("sender receiver", "name profilePhotoUrl isOnline");
 
-    // --- THIS IS THE FIX ---
     const io = req.app.get('io');
-    const userSocketMap = io.userSocketMap; // Get the map from the io instance
-    const senderSocketId = userSocketMap[senderId];
+    const userSocketMap = io.userSocketMap;
     const receiverSocketId = userSocketMap[receiverId];
 
-    // If the receiver is online, emit the message directly to them
     if (receiverSocketId) {
         io.to(receiverSocketId).emit("receive-message", { ...message.toObject(), _type: 'message' });
     }
-    // --- END OF FIX ---
 
     res.status(201).json({ success: true, message });
   } catch (error) {
@@ -43,7 +38,7 @@ const sendMessage = async (req, res) => {
 };
 
 // Get all messages AND calls between two users
-const getMessages = async (req, res) => {
+exports.getMessages = async (req, res) => {
   try {
     const { userId } = req.params;
     const currentUserId = req.user.id;
@@ -81,7 +76,7 @@ const getMessages = async (req, res) => {
 };
 
 // Mark a message as read by the current user
-const markAsRead = async (req, res) => {
+exports.markAsRead = async (req, res) => {
   try {
     const { messageId } = req.params;
     const message = await Message.findById(messageId);
@@ -104,7 +99,7 @@ const markAsRead = async (req, res) => {
 };
 
 // Edit a message sent by the current user
-const editMessage = async (req, res) => {
+exports.editMessage = async (req, res) => {
   try {
     const { messageId } = req.params;
     const { content } = req.body;
@@ -131,7 +126,7 @@ const editMessage = async (req, res) => {
 };
 
 // Delete a single message sent by the current user
-const deleteMessage = async (req, res) => {
+exports.deleteMessage = async (req, res) => {
   try {
     const { messageId } = req.params;
     const result = await Message.findOneAndDelete({ _id: messageId, sender: req.user.id });
@@ -144,9 +139,8 @@ const deleteMessage = async (req, res) => {
   }
 };
 
-// <<< --- YEH FUNCTION AB PURI TARAH SE THEEK HAI --- >>>
 // Toggle the 'isPinned' status of a message
-const togglePinMessage = async (req, res) => {
+exports.togglePinMessage = async (req, res) => {
   try {
     const { messageId } = req.params;
     const messageToPin = await Message.findById(messageId);
@@ -163,13 +157,11 @@ const togglePinMessage = async (req, res) => {
       isPinned: true
     });
 
-    // Case 1: A different message is already pinned. Unpin it first.
     if (currentlyPinned && currentlyPinned._id.toString() !== messageToPin._id.toString()) {
       currentlyPinned.isPinned = false;
       await currentlyPinned.save();
     }
 
-    // Case 2: Toggle the selected message's pin status.
     messageToPin.isPinned = !messageToPin.isPinned;
     await messageToPin.save();
 
@@ -181,7 +173,7 @@ const togglePinMessage = async (req, res) => {
 };
 
 // Forward an existing message to a different user
-const forwardMessage = async (req, res) => {
+exports.forwardMessage = async (req, res) => {
   try {
     const { messageId, forwardToUserId } = req.body;
     const originalMessage = await Message.findById(messageId);
@@ -211,7 +203,7 @@ const forwardMessage = async (req, res) => {
 };
 
 // Delete multiple messages sent by the current user
-const deleteMultipleMessages = async (req, res) => {
+exports.deleteMultipleMessages = async (req, res) => {
     try {
         const { messageIds } = req.body;
         if (!messageIds || !Array.isArray(messageIds)) {
@@ -229,13 +221,47 @@ const deleteMultipleMessages = async (req, res) => {
     }
 };
 
-module.exports = {
-  sendMessage,
-  getMessages,
-  markAsRead,
-  editMessage,
-  deleteMessage,
-  togglePinMessage,
-  forwardMessage,
-  deleteMultipleMessages,
+// Add/Update/Remove a reaction to a message
+exports.toggleReaction = async (req, res) => {
+    try {
+        const { messageId } = req.params;
+        const { emoji } = req.body;
+        const userId = req.user.id;
+
+        if (!emoji) {
+            return res.status(400).json({ message: "Emoji is required." });
+        }
+
+        const message = await Message.findById(messageId);
+        if (!message) {
+            return res.status(404).json({ message: "Message not found." });
+        }
+
+        const reactionIndex = message.reactions.findIndex(
+            r => r.user.toString() === userId
+        );
+
+        if (reactionIndex > -1) {
+            if (message.reactions[reactionIndex].emoji === emoji) {
+                message.reactions.splice(reactionIndex, 1);
+            } else {
+                message.reactions[reactionIndex].emoji = emoji;
+            }
+        } else {
+            message.reactions.push({ emoji, user: userId });
+        }
+
+        await message.save();
+        
+        const populatedMessage = await message.populate({ path: 'reactions.user', select: 'name' });
+        
+        const io = req.app.get('io');
+        const chatRoom = [message.sender.toString(), message.receiver.toString()].sort().join('-');
+        io.to(chatRoom).emit('message-updated', populatedMessage);
+
+        res.status(200).json({ success: true, message: populatedMessage });
+    } catch (error) {
+        console.error("Toggle reaction error:", error);
+        res.status(500).json({ message: "Server error." });
+    }
 };

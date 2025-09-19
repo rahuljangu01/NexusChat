@@ -192,4 +192,9 @@ export const updateWallpaper = async (connectionId, wallpaperUrl) => {
   return data;
 };
 
+export const toggleMessageReaction = async (messageId, emoji) => {
+  const { data } = await api.post(`/messages/react/${messageId}`, { emoji });
+  return data.message;
+};
+
 export default api;

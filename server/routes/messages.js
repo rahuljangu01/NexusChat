@@ -7,6 +7,8 @@ const {
 } = require("../controllers/messageController");
 const { protect } = require("../middleware/auth");
 
+const { toggleReaction } = require("../controllers/messageController");
+
 const router = express.Router();
 
 router.post("/send", protect, sendMessage);
@@ -18,5 +20,7 @@ router.delete("/:messageId", protect, deleteMessage);
 router.put("/pin/:messageId", protect, togglePinMessage);
 router.post("/forward", protect, forwardMessage);
 router.post("/delete-multiple", protect, deleteMultipleMessages);
+
+router.post("/react/:messageId", protect, toggleReaction);
 
 module.exports = router;

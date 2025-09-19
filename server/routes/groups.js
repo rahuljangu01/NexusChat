@@ -17,6 +17,7 @@ const {
   getGroupMessages,
 } = require("../controllers/groupController");
 const { protect } = require("../middleware/auth");
+const { addMultipleMembers } = require("../controllers/groupController");
 
 const router = express.Router();
 
@@ -40,5 +41,7 @@ router.put("/:groupId/members/:userId/role", protect, updateMemberRole);
 // Messaging Routes
 router.post("/:groupId/send", protect, sendGroupMessage);
 router.get("/:groupId/messages", protect, getGroupMessages);
+
+router.post("/:groupId/members/add-multiple", protect, addMultipleMembers);
 
 module.exports = router;

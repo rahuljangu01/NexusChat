@@ -5,6 +5,12 @@ const User = require("../models/User");
 const Message = require("../models/Message");
 const mongoose = require('mongoose');
 
+// Helper function to check for admin role
+const checkAdmin = (group, userId) => {
+    const member = group.members.find(m => m.user.toString() === userId.toString());
+    return member && member.role === 'admin';
+};
+
 // Create a new group and add initial members
 const createGroup = async (req, res) => {
   try {
@@ -103,13 +109,17 @@ const getGroupById = async (req, res) => {
   try {
     const { groupId } = req.params;
     const group = await Group.findById(groupId)
-        .populate("members.user", "name profilePhotoUrl isOnline lastSeen")
+        .populate("members.user", "name profilePhotoUrl isOnline lastSeen department")
         .populate("createdBy", "name profilePhotoUrl");
 
     if (!group) return res.status(404).json({ message: "Group not found" });
 
+    group.members = group.members.filter(member => member.user !== null);
+    
     const isMember = group.members.some((member) => member.user._id.toString() === req.user.id);
-    if (!isMember) return res.status(403).json({ message: "You are not a member of this group" });
+    if (!isMember && group.createdBy._id.toString() !== req.user.id) {
+         return res.status(403).json({ message: "You are not a member of this group" });
+    }
 
     res.json({ success: true, group });
   } catch (error) {
@@ -208,13 +218,7 @@ const getGroupMessages = async (req, res) => {
   }
 };
 
-// --- Admin-Only Functions ---
-
-const checkAdmin = (group, userId) => {
-    const member = group.members.find(m => m.user.toString() === userId.toString());
-    return member && member.role === 'admin';
-};
-
+// Add a single member to a group
 const addMember = async (req, res) => {
     try {
         const { groupId, userId } = req.params;
@@ -231,6 +235,41 @@ const addMember = async (req, res) => {
     }
 };
 
+// Add multiple members to a group
+const addMultipleMembers = async (req, res) => {
+    try {
+        const { groupId } = req.params;
+        const { memberIds } = req.body;
+
+        if (!memberIds || !Array.isArray(memberIds) || memberIds.length === 0) {
+            return res.status(400).json({ message: "Member IDs must be a non-empty array." });
+        }
+
+        const group = await Group.findById(groupId);
+        if (!group) return res.status(404).json({ message: "Group not found" });
+        if (!checkAdmin(group, req.user.id)) return res.status(403).json({ message: "Only admins can add members" });
+
+        const newMembers = [];
+        memberIds.forEach(userId => {
+            const isAlreadyMember = group.members.some(m => m.user.toString() === userId);
+            if (!isAlreadyMember) {
+                newMembers.push({ user: userId, role: "member", joinedAt: new Date() });
+            }
+        });
+
+        if (newMembers.length > 0) {
+            group.members.push(...newMembers);
+            await group.save();
+        }
+
+        res.json({ success: true, message: "Members added successfully" });
+    } catch (error) {
+        console.error("Error adding multiple members:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
+// Remove a member from a group
 const removeMember = async (req, res) => {
     try {
         const { groupId, userId } = req.params;
@@ -249,6 +288,7 @@ const removeMember = async (req, res) => {
     }
 };
 
+// Update a member's role
 const updateMemberRole = async (req, res) => {
     try {
         const { groupId, userId } = req.params;
@@ -270,6 +310,7 @@ const updateMemberRole = async (req, res) => {
     }
 };
 
+// Update group details
 const updateGroup = async (req, res) => {
     try {
         const { groupId } = req.params;
@@ -289,6 +330,7 @@ const updateGroup = async (req, res) => {
     }
 };
 
+// Delete an entire group
 const deleteGroup = async (req, res) => {
     try {
         const { groupId } = req.params;
@@ -297,7 +339,7 @@ const deleteGroup = async (req, res) => {
         if (group.createdBy.toString() !== req.user.id) return res.status(403).json({ message: "Only the group creator can delete the group" });
 
         await Group.findByIdAndDelete(groupId);
-        await Message.deleteMany({ group: groupId }); // Clean up messages
+        await Message.deleteMany({ group: groupId });
 
         res.json({ success: true, message: "Group deleted successfully" });
     } catch (error) {
@@ -315,6 +357,7 @@ module.exports = {
   sendGroupMessage,
   getGroupMessages,
   addMember,
+  addMultipleMembers,
   removeMember,
   updateMemberRole,
   updateGroup,

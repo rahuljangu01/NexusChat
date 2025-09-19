@@ -104,12 +104,12 @@ const authSlice = createSlice({
       .addCase(getCurrentUser.rejected, (state) => { state.isAuthenticated = false; state.user = null; state.token = null; })
       // Update profile
       .addCase(updateUserProfile.pending, (state) => { state.loading = true; })
-      .addCase(updateUserProfile.fulfilled, (state, action) => { state.loading = false; state.user = { ...state.user, ...action.payload }; })
-      .addCase(updateUserProfile.rejected, (state, action) => { state.loading = false; state.error = action.payload; })
+      .addCase(updateUserProfile.fulfilled, (state, action) => { state.loading = false; state.user = action.payload; })    
+        .addCase(updateUserProfile.rejected, (state, action) => { state.loading = false; state.error = action.payload; })
       // Upload photo
       .addCase(uploadAndUpdateProfilePhoto.pending, (state) => { state.loading = true; })
-      .addCase(uploadAndUpdateProfilePhoto.fulfilled, (state, action) => { state.loading = false; state.user = action.payload; })
-      .addCase(uploadAndUpdateProfilePhoto.rejected, (state, action) => { state.loading = false; state.error = action.payload; });
+      .addCase(uploadAndUpdateProfilePhoto.fulfilled, (state, action) => {state.loading = false; state.user = action.payload;})   
+     .addCase(uploadAndUpdateProfilePhoto.rejected, (state, action) => { state.loading = false; state.error = action.payload; });
   },
 });
 
