@@ -1,4 +1,4 @@
-// client/src/pages/ChatPage.jsx (FINAL - SYNCHRONOUS SENDING FIX)
+// client/src/pages/ChatPage.jsx (FINAL - FULL CODE)
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
@@ -329,12 +329,12 @@ const ChatPage = () => {
     const handleEmojiClick = (emojiObject) => { setMessage(prev => prev + emojiObject.emoji); };
     
     const handleSendMessage = async (e) => {
-    e.preventDefault();
-    if (!message.trim() || !currentUser) return;
-    
-    const tempId = Date.now().toString();
-    const optimisticMessage = { 
-         _id: tempId,
+        e.preventDefault();
+        if (!message.trim() || !currentUser) return;
+
+        const tempId = Date.now().toString();
+        const optimisticMessage = {
+            _id: tempId,
             sender: { _id: currentUser.id, name: currentUser.name, profilePhotoUrl: currentUser.profilePhotoUrl },
             receiver: { _id: userId },
             content: message.trim(),
@@ -342,28 +342,37 @@ const ChatPage = () => {
             createdAt: new Date().toISOString(),
             status: 'sent',
             _type: 'message',
-    };
+        };
 
-    dispatch(addMessage({ chatId: userId, message: optimisticMessage }));
-    
-    const messageToSend = message.trim();
-    setMessage("");
-    setShowEmojiPicker(false);
+        dispatch(addMessage({ chatId: userId, message: optimisticMessage }));
+        
+        const messageToSend = message.trim();
+        setMessage("");
+        setShowEmojiPicker(false);
 
-    socketService.emit('send-message', {
-        receiverId: userId,
-        content: messageToSend,
-        tempId: tempId,
-    }, (response) => {
-        if (response.message) {
-            dispatch(updateMessage({ chatId: userId, tempId: tempId, finalMessage: response.message }));
-            // Re-fetch connections to update last message and order
-            dispatch(fetchConnections(currentUser.id));
-        } else if (response.error) {
-            console.error("Failed to send message:", response.error);
+        try {
+            const response = await new Promise((resolve, reject) => {
+                socketService.emit('send-message', {
+                    receiverId: userId,
+                    content: messageToSend,
+                    tempId: tempId,
+                }, (ack) => {
+                    if (ack.error) {
+                        reject(new Error(ack.error));
+                    } else {
+                        resolve(ack);
+                    }
+                });
+            });
+
+            if (response.message) {
+                dispatch(updateMessage({ chatId: userId, tempId: tempId, finalMessage: response.message }));
+                dispatch(fetchConnections(currentUser.id));
+            }
+        } catch (error) {
+            console.error("Failed to send message:", error.message);
         }
-    });
-};
+    };
     
     const handleFileChange = async (event) => {
         const file = event.target.files[0];
