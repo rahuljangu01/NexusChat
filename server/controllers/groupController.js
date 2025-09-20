@@ -1,4 +1,4 @@
-// server/controllers/groupController.js (COMPLETE CODE WITH ALL FUNCTIONS IMPLEMENTED)
+// server/controllers/groupController.js (FINAL & COMPLETE WITH DELETE LOGIC)
 
 const Group = require("../models/Group");
 const User = require("../models/User");
@@ -147,30 +147,31 @@ const joinGroup = async (req, res) => {
   }
 };
 
-// Leave a group
+// Leave a group (UPDATED LOGIC)
 const leaveGroup = async (req, res) => {
   try {
     const { groupId } = req.params;
     const group = await Group.findById(groupId);
     if (!group) return res.status(404).json({ message: "Group not found" });
 
+    if (group.createdBy.toString() === req.user.id) {
+        return res.status(400).json({ message: "As the group creator, you cannot leave. You can only delete the group." });
+    }
+
     const memberIndex = group.members.findIndex((member) => member.user.toString() === req.user.id);
     if (memberIndex === -1) return res.status(400).json({ message: "You are not a member of this group" });
 
     const isAdmin = group.members[memberIndex].role === "admin";
     const adminCount = group.members.filter((member) => member.role === "admin").length;
-    if (isAdmin && adminCount === 1 && group.members.length > 1) {
-      return res.status(400).json({ message: "Cannot leave as the only admin. Please promote another member first." });
+
+    if (isAdmin && adminCount === 1) {
+        const creatorMember = group.members.find(m => m.user.toString() === group.createdBy.toString());
+        if (creatorMember) {
+            creatorMember.role = 'admin';
+        }
     }
 
     group.members.splice(memberIndex, 1);
-
-    if (group.members.length === 0) {
-      await Group.findByIdAndDelete(groupId);
-      await Message.deleteMany({ group: groupId });
-      return res.json({ success: true, message: "Left group successfully. Group was deleted as it had no members." });
-    }
-
     await group.save();
     res.json({ success: true, message: "Left group successfully" });
   } catch (error) {
@@ -293,19 +294,36 @@ const updateMemberRole = async (req, res) => {
     try {
         const { groupId, userId } = req.params;
         const { role } = req.body;
-        if (!['admin', 'member'].includes(role)) return res.status(400).json({ message: "Invalid role specified" });
+        if (!['admin', 'member'].includes(role)) {
+            return res.status(400).json({ message: "Invalid role specified" });
+        }
 
         const group = await Group.findById(groupId);
         if (!group) return res.status(404).json({ message: "Group not found" });
-        if (!checkAdmin(group, req.user.id)) return res.status(403).json({ message: "Only admins can change roles" });
 
-        const member = group.members.find(m => m.user.toString() === userId);
-        if (!member) return res.status(404).json({ message: "Member not found" });
+        if (!checkAdmin(group, req.user.id)) {
+            return res.status(403).json({ message: "Only admins can change roles" });
+        }
+        
+        const memberToUpdate = group.members.find(m => m.user.toString() === userId);
+        if (!memberToUpdate) return res.status(404).json({ message: "Member not found" });
+        
+        if (req.user.id === userId) {
+            return res.status(400).json({ message: "You cannot change your own role." });
+        }
 
-        member.role = role;
+        if (memberToUpdate.role === 'admin' && role === 'member') {
+            const adminCount = group.members.filter(m => m.role === 'admin').length;
+            if (adminCount <= 1) {
+                return res.status(400).json({ message: "Cannot remove the last admin. Please promote another member to admin first." });
+            }
+        }
+
+        memberToUpdate.role = role;
         await group.save();
         res.json({ success: true, message: "Member role updated" });
     } catch (error) {
+        console.error("Update member role error:", error);
         res.status(500).json({ message: "Server error" });
     }
 };
@@ -330,19 +348,23 @@ const updateGroup = async (req, res) => {
     }
 };
 
-// Delete an entire group
+// Delete an entire group (UPDATED LOGIC)
 const deleteGroup = async (req, res) => {
     try {
         const { groupId } = req.params;
         const group = await Group.findById(groupId);
         if (!group) return res.status(404).json({ message: "Group not found" });
-        if (group.createdBy.toString() !== req.user.id) return res.status(403).json({ message: "Only the group creator can delete the group" });
+        
+        if (group.createdBy.toString() !== req.user.id) {
+            return res.status(403).json({ message: "Only the group creator can delete the group" });
+        }
 
         await Group.findByIdAndDelete(groupId);
         await Message.deleteMany({ group: groupId });
 
-        res.json({ success: true, message: "Group deleted successfully" });
+        res.json({ success: true, message: "Group and all its messages have been deleted successfully" });
     } catch (error) {
+        console.error("Delete group error:", error);
         res.status(500).json({ message: "Server error" });
     }
 };

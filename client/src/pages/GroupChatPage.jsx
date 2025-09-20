@@ -1,9 +1,9 @@
-// client/src/pages/GroupChatPage.jsx (FINAL - WARNINGS FIXED)
+// client/src/pages/GroupChatPage.jsx (FINAL & COMPLETE WITH DELETE LOGIC)
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useSelector } from "react-redux";
-import { ArrowLeft, Send, Paperclip, MoreVertical, UserPlus, LogOut, X, Smile, Phone, Video, PhoneCall } from "lucide-react";
+import { useSelector, useDispatch } from "react-redux";
+import { ArrowLeft, Send, Paperclip, MoreVertical, UserPlus, LogOut, X, Smile, Phone, Video, PhoneCall, MoreHorizontal, Trash2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { format, isSameDay } from 'date-fns';
 import EmojiPicker from 'emoji-picker-react';
@@ -17,24 +17,13 @@ import "./Dashboard.css";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
+import { TooltipProvider } from "../components/ui/tooltip";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "../components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
 import GroupCallingUI from "../components/GroupCallingUI";
-
-// <<< --- YEH HAI FIX --- >>>
-// peerOptions ko component ke bahar define kiya gaya hai.
-// Ab yeh har render par dobara nahi banega.
-const peerOptions = {
-  config: {
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-    ],
-  },
-};
+import { fetchMyGroups } from "../store/slices/groupsSlice";
 
 const AddMembersDialog = ({ group, currentUser, onMembersAdded }) => {
-    // ... is component mein koi badlaav nahi hai ...
     const [connections, setConnections] = useState([]);
     const [selectedMembers, setSelectedMembers] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -112,9 +101,9 @@ const AddMembersDialog = ({ group, currentUser, onMembersAdded }) => {
 
 
 const GroupChatPage = () => {
-    // ... baaki state definitions ...
     const { groupId } = useParams();
     const navigate = useNavigate();
+    const dispatch = useDispatch();
     const { user: currentUser } = useSelector((state) => state.auth);
 
     const [group, setGroup] = useState(null);
@@ -140,7 +129,7 @@ const GroupChatPage = () => {
     const fileInputRef = useRef(null);
 
     const { id: currentUserId, name: currentUserName, profilePhotoUrl: currentUserPhoto } = currentUser;
-    // ... baaki functions (fetchGroupData, handleRemoveMember, etc.) ...
+
     const fetchGroupData = useCallback(async () => {
         if (!groupId) return;
         setLoading(true);
@@ -169,12 +158,37 @@ const GroupChatPage = () => {
                 await api.delete(`/groups/${groupId}/members/${memberUserId}`);
                 alert("Member removed successfully.");
                 fetchGroupData();
+                dispatch(fetchMyGroups());
             } catch (error) {
                 alert(error.response?.data?.message || "Failed to remove member.");
             }
         }
     };
-    
+
+    const handleRoleChange = async (memberUserId, role) => {
+        try {
+            await api.put(`/groups/${groupId}/members/${memberUserId}/role`, { role });
+            alert(`User role updated to ${role}.`);
+            fetchGroupData();
+            dispatch(fetchMyGroups());
+        } catch (error) {
+            alert(error.response?.data?.message || "Failed to update role.");
+        }
+    };
+
+    const handleDeleteGroup = async () => {
+        if (window.confirm(`Are you sure you want to PERMANENTLY DELETE "${group.name}"? This action cannot be undone.`)) {
+            try {
+                await api.delete(`/groups/${groupId}`);
+                alert("Group deleted successfully.");
+                dispatch(fetchMyGroups());
+                navigate('/dashboard/groups');
+            } catch (error) {
+                alert(error.response?.data?.message || "Failed to delete group.");
+            }
+        }
+    };
+
     const startGroupCall = useCallback((type) => {
         setCallType(type);
         setGroupCallState('calling');
@@ -217,6 +231,7 @@ const GroupChatPage = () => {
         socketService.emit('leave-group-call', { groupId, userId: currentUserId });
     }, [stream, group, groupId, groupCallState, fetchGroupData, currentUserId]);
 
+
     useEffect(() => {
         if (!groupId) return;
         socketService.emit("join-group-room", groupId);
@@ -226,14 +241,14 @@ const GroupChatPage = () => {
         const handleIncomingCall = (data) => { if (data.groupId === groupId && groupCallState === 'idle') { setIncomingCallData(data); setCallType(data.callType); setGroupCallState('incoming'); } };
         const handleNewUserJoining = ({ from }) => {
             if (!stream || from.id === currentUserId) return;
-            const peer = new Peer({ initiator: true, trickle: false, stream, ...peerOptions });
+            const peer = new Peer({ initiator: true, trickle: false, stream });
             peer.on('signal', signal => { socketService.emit('send-signal-group', { signal, to: from.id, from: { id: currentUserId, name: currentUserName, profilePhotoUrl: currentUserPhoto } }); });
             peersRef.current[from.id] = { peer, peerID: from.id, name: from.name, profilePhotoUrl: from.profilePhotoUrl };
             setPeers({...peersRef.current});
         };
         const handleReceivingSignal = ({ signal, from }) => {
             if (groupCallState === 'calling') { setGroupCallState('active'); }
-            const peer = new Peer({ initiator: false, trickle: false, stream, ...peerOptions });
+            const peer = new Peer({ initiator: false, trickle: false, stream });
             peer.on('signal', returnSignal => { socketService.emit('return-signal-group', { signal: returnSignal, to: from.id }); });
             peer.signal(signal);
             peersRef.current[from.id] = { peer, peerID: from.id, name: from.name, profilePhotoUrl: from.profilePhotoUrl };
@@ -257,8 +272,6 @@ const GroupChatPage = () => {
         };
     }, [groupId, groupCallState, stream, currentUserId, currentUserName, currentUserPhoto]);
 
-    // ... baaki JSX ...
-    // useEffect, handleEmojiClick, handleSendMessage, etc.
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
@@ -299,6 +312,7 @@ const GroupChatPage = () => {
             try {
                 await api.post(`/groups/${groupId}/leave`);
                 alert("You have left the group.");
+                dispatch(fetchMyGroups());
                 navigate('/dashboard/groups');
             } catch (error) {
                 alert(error.response?.data?.message || "Failed to leave group.");
@@ -394,36 +408,60 @@ const GroupChatPage = () => {
                                         </DialogTrigger>
                                     )}
                                 </div>
-                                <AddMembersDialog group={group} currentUser={currentUser} onMembersAdded={() => { setAddMemberDialogOpen(false); fetchGroupData(); }}/>
+                                <AddMembersDialog group={group} currentUser={currentUser} onMembersAdded={() => { setAddMemberDialogOpen(false); fetchGroupData(); dispatch(fetchMyGroups()); }}/>
                             </Dialog>
                             
                             <TooltipProvider>
                                 <div className="space-y-2">
                                     {group.members.filter(member => member && member.user).map(member => (
-                                        <div key={member.user._id} className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-800/50 cursor-pointer" onClick={() => { if (member.user._id !== currentUserId) { navigate(`/dashboard/chat/${member.user._id}`) } }}>
-                                            <div className="flex items-center gap-3">
+                                        <div key={member.user._id} className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-800/50">
+                                            <div className="flex items-center gap-3 cursor-pointer flex-grow" onClick={() => { if (member.user._id !== currentUserId) { navigate(`/dashboard/chat/${member.user._id}`) } }}>
                                                 <Avatar className="h-9 w-9"><AvatarImage src={member.user.profilePhotoUrl}/><AvatarFallback>{member.user.name.charAt(0)}</AvatarFallback></Avatar>
                                                 <div>
                                                     <h3 className="font-semibold text-sm text-white">{member.user.name}</h3>
                                                     <p className="text-xs text-slate-500 capitalize">{member.role}</p>
                                                 </div>
                                             </div>
+
                                             {isAdmin && member.user._id !== currentUserId && 
-                                                <Tooltip>
-                                                    <TooltipTrigger asChild>
-                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500" onClick={(e) => { e.stopPropagation(); handleRemoveMember(member.user._id); }}>
-                                                            <X className="h-5 w-5"/>
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400">
+                                                            <MoreHorizontal className="h-5 w-5"/>
                                                         </Button>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent><p>Remove Member</p></TooltipContent>
-                                                </Tooltip>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent className="bg-slate-800 border-slate-700 text-white">
+                                                        {member.role !== 'admin' && (
+                                                            <DropdownMenuItem onClick={() => handleRoleChange(member.user._id, 'admin')}>
+                                                                Make Admin
+                                                            </DropdownMenuItem>
+                                                        )}
+                                                        {member.role === 'admin' && (
+                                                            <DropdownMenuItem onClick={() => handleRoleChange(member.user._id, 'member')}>
+                                                                Remove as Admin
+                                                            </DropdownMenuItem>
+                                                        )}
+                                                         <DropdownMenuItem className="text-red-500" onClick={() => handleRemoveMember(member.user._id)}>
+                                                            Remove Member
+                                                        </DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
                                             }
                                         </div>
                                     ))}
                                 </div>
                             </TooltipProvider>
                             <div className="border-t border-slate-800 my-6"></div>
-                            <Button variant="ghost" className="w-full justify-start text-red-500 hover:bg-red-500/10 hover:text-red-400" onClick={handleLeaveGroup}><LogOut className="h-4 w-4 mr-2"/>Leave Group</Button>
+                            
+                            {group.createdBy._id === currentUserId ? (
+                                <Button variant="destructive" className="w-full justify-start" onClick={handleDeleteGroup}>
+                                    <Trash2 className="h-4 w-4 mr-2"/>Delete Group
+                                </Button>
+                            ) : (
+                                <Button variant="ghost" className="w-full justify-start text-red-500 hover:bg-red-500/10 hover:text-red-400" onClick={handleLeaveGroup}>
+                                    <LogOut className="h-4 w-4 mr-2"/>Leave Group
+                                </Button>
+                            )}
                         </div>
                     </motion.aside>
                 )}

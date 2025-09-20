@@ -1,7 +1,7 @@
-// client/src/pages/GroupsPage.jsx (UPDATED WITH DATA REFRESH LOGIC)
+// client/src/pages/GroupsPage.jsx (FINAL - NO WARNINGS)
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { useSelector } from "react-redux";
+import { useState, useEffect, useRef } from "react"; // useCallback hata diya gaya hai
+import { useSelector, useDispatch } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { Plus, Users, Search, Camera } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -14,6 +14,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Textarea } from "../components/ui/textarea";
 import api, { getMyConnections, uploadProfilePhoto } from "../utils/api";
+import { fetchMyGroups } from "../store/slices/groupsSlice";
 import "./Dashboard.css";
 
 const CreateGroupDialog = ({ onGroupCreated, onClose }) => {
@@ -136,30 +137,14 @@ const CreateGroupDialog = ({ onGroupCreated, onClose }) => {
 
 export default function GroupsPage() {
   const navigate = useNavigate();
-  const [myGroups, setMyGroups] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const dispatch = useDispatch();
+  const { myGroups, loading: groupsLoading } = useSelector((state) => state.groups);
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreateDialogOpen, setCreateDialogOpen] = useState(false);
 
-  const fetchMyGroups = useCallback(async () => {
-    // Ab hum loading ko har baar true nahi karenge taaki background refresh smooth ho
-    try {
-      const res = await api.get("/groups/my-groups");
-      setMyGroups(res.data.groups);
-    } catch (error) {
-      console.error("Failed to fetch groups:", error);
-    } finally {
-      setLoading(false); // Loading ko bas aakhir mein false karenge
-    }
-  }, []);
-
-  // <<< --- YEH HAI SABSE ZAROORI BADLAAV --- >>>
-  // Yeh useEffect har baar chalega jab GroupsPage component screen par aayega
   useEffect(() => { 
-    setLoading(true); // Component load hone par loading dikhao
-    fetchMyGroups(); 
-  }, [fetchMyGroups]);
-  // <<< --- BADLAAV YAHAN KHATAM HOTA HAI --- >>>
+    dispatch(fetchMyGroups()); 
+  }, [dispatch]);
 
   const filteredGroups = myGroups.filter(group => 
     group.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -168,7 +153,7 @@ export default function GroupsPage() {
   const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.05 } } };
   const itemVariants = { hidden: { y: 20, opacity: 0 }, visible: { y: 0, opacity: 1 } };
 
-  if (loading) {
+  if (groupsLoading === 'pending' || groupsLoading === 'idle') {
     return (<div className="flex justify-center items-center h-full w-full"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-indigo-500"></div></div>);
   }
   
@@ -247,7 +232,7 @@ export default function GroupsPage() {
           <CreateGroupDialog 
             onGroupCreated={() => { 
                 setCreateDialogOpen(false); 
-                fetchMyGroups(); 
+                dispatch(fetchMyGroups()); 
             }} 
             onClose={() => setCreateDialogOpen(false)}
           />

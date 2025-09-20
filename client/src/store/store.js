@@ -5,6 +5,7 @@ import authSlice from "./slices/authSlice";
 import chatSlice from "./slices/chatSlice";
 import uiSlice from "./slices/uiSlice";
 import connectionsSlice from "./slices/connectionsSlice"; // <-- IMPORT THE NEW SLICE
+import groupsSlice from "./slices/groupsSlice";
 
 export const store = configureStore({
   reducer: {
@@ -12,6 +13,7 @@ export const store = configureStore({
     chat: chatSlice,
     ui: uiSlice,
     connections: connectionsSlice, // <-- ADD THE NEW SLICE
+    groups: groupsSlice,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
