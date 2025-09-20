@@ -281,6 +281,18 @@ const ChatPage = () => {
             setCallType(type);
 
             const peer = new Peer({ initiator: true, stream, ...peerOptions });
+            connectionRef.current = peer;
+
+            const handleCallAccepted = (signal) => {
+                console.log("[Call] Call was accepted. Signaling peer.");
+                setCallState('active');
+                durationIntervalRef.current = setInterval(() => setCallDuration(prev => prev + 1), 1000);
+                if (connectionRef.current) {
+                    connectionRef.current.signal(signal);
+                }
+                socketService.off('call-accepted', handleCallAccepted);
+            };
+            socketService.on('call-accepted', handleCallAccepted);
 
             peer.on('signal', data => {
                 const payload = { 
@@ -295,14 +307,6 @@ const ChatPage = () => {
             peer.on('stream', remoteStream => { 
                 if (userVideo.current) userVideo.current.srcObject = remoteStream; 
             });
-
-            socketService.on('call-accepted', signal => {
-                setCallState('active');
-                durationIntervalRef.current = setInterval(() => setCallDuration(prev => prev + 1), 1000);
-                peer.signal(signal);
-            });
-
-            connectionRef.current = peer;
 
         }).catch(err => {
             console.error("[Call] getUserMedia FAILED! Error:", err.name, err.message);
