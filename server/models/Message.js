@@ -22,9 +22,9 @@ const messageSchema = new mongoose.Schema(
       required: true,
       maxlength: [2000, "Content cannot exceed 2000 characters"],
     },
-    messageType: {
+   messageType: {
       type: String,
-      enum: ["text", "image", "file", "audio", "sticker"],
+      enum: ["text", "image", "file", "audio", "sticker", "encrypted_text"], // <<< YEH ADD KIYA GAYA HAI
       default: "text",
     },
     status: {
