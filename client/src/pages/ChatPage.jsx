@@ -260,22 +260,50 @@ const ChatPage = () => {
     }, [callState, userId, caller.id, stream, callDuration, dispatch]);
   
     const callUser = (type) => {
+        console.log(`[Call] Attempting to start a ${type} call to user:`, userId);
         const constraints = { video: type === 'video', audio: true };
+
         navigator.mediaDevices.getUserMedia(constraints).then(stream => {
+            console.log("[Call] Media stream acquired successfully!");
             setStream(stream);
             if(myVideo.current) myVideo.current.srcObject = stream;
+
             setCallState('calling');
             setCallType(type);
+
             const peer = new Peer({ initiator: true, trickle: false, stream });
-            peer.on('signal', data => { socketService.emit('call-user', { userToCall: userId, signalData: data, from: { id: currentUser.id, name: currentUser.name, profilePhotoUrl: currentUser.profilePhotoUrl }, type }); });
-            peer.on('stream', remoteStream => { if (userVideo.current) userVideo.current.srcObject = remoteStream; });
+
+            peer.on('signal', data => {
+                const payload = { 
+                    userToCall: userId, 
+                    signalData: data, 
+                    from: { id: currentUser.id, name: currentUser.name, profilePhotoUrl: currentUser.profilePhotoUrl }, 
+                    type 
+                };
+                console.log("[Call] Peer signal generated. Emitting 'call-user' with payload:", payload);
+                socketService.emit('call-user', payload);
+            });
+
+            peer.on('stream', remoteStream => { 
+                if (userVideo.current) userVideo.current.srcObject = remoteStream; 
+            });
+
             socketService.on('call-accepted', signal => {
+                console.log("[Call] Call was accepted. Signaling peer.");
                 setCallState('active');
                 durationIntervalRef.current = setInterval(() => setCallDuration(prev => prev + 1), 1000);
                 peer.signal(signal);
             });
+
             connectionRef.current = peer;
-        }).catch(err => console.error("getUserMedia error:", err));
+
+        }).catch(err => {
+            // YEH SABSE ZAROORI HAI
+            console.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+            console.error("[Call] getUserMedia FAILED! Error:", err.name, err.message);
+            console.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+            alert(`Could not start call. Error: ${err.name}. Please check camera/mic permissions in your browser.`);
+        });
     };
 
     const answerCall = () => {

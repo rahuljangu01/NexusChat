@@ -116,15 +116,27 @@ const socketHandler = (io) => {
         }
     });
 
-    socket.on("call-user", (data) => {
+     socket.on("call-user", (data) => {
+        console.log("------------------------------------");
+        console.log("[Socket Event] Received 'call-user' from:", socket.user.name);
+        console.log("Data received:", data);
+
         const targetSocketId = userSocketMap[data.userToCall];
+        
+        console.log("Current userSocketMap:", userSocketMap);
+        console.log("Trying to find socket ID for user:", data.userToCall);
+
         if (targetSocketId) {
+            console.log(`SUCCESS: Found target socket ID: ${targetSocketId}. Emitting 'call-made'.`);
             io.to(targetSocketId).emit("call-made", { 
                 signal: data.signalData, 
                 from: data.from,
                 type: data.type 
             });
+        } else {
+            console.error(`FAILURE: Could not find socket ID for user ${data.userToCall}. User might be offline or not connected.`);
         }
+        console.log("------------------------------------");
     });
     socket.on("answer-call", (data) => {
         const targetSocketId = userSocketMap[data.to];
