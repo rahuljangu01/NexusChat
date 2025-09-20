@@ -1,4 +1,4 @@
-// client/src/pages/GroupChatPage.jsx (FINAL - NULL USER & WARNING FIX)
+// client/src/pages/GroupChatPage.jsx (FINAL - WARNINGS FIXED)
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
@@ -21,7 +21,20 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../com
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "../components/ui/dialog";
 import GroupCallingUI from "../components/GroupCallingUI";
 
+// <<< --- YEH HAI FIX --- >>>
+// peerOptions ko component ke bahar define kiya gaya hai.
+// Ab yeh har render par dobara nahi banega.
+const peerOptions = {
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+    ],
+  },
+};
+
 const AddMembersDialog = ({ group, currentUser, onMembersAdded }) => {
+    // ... is component mein koi badlaav nahi hai ...
     const [connections, setConnections] = useState([]);
     const [selectedMembers, setSelectedMembers] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -32,8 +45,6 @@ const AddMembersDialog = ({ group, currentUser, onMembersAdded }) => {
             const myConns = await getMyConnections();
             const acceptedConns = myConns.filter(c => c.status === 'accepted');
             
-            // <<< --- THIS IS THE FIX --- >>>
-            // First, filter out any members where the user is null
             const validMembers = group.members.filter(member => member && member.user);
             const currentMemberIds = validMembers.map(m => m.user._id);
             
@@ -101,6 +112,7 @@ const AddMembersDialog = ({ group, currentUser, onMembersAdded }) => {
 
 
 const GroupChatPage = () => {
+    // ... baaki state definitions ...
     const { groupId } = useParams();
     const navigate = useNavigate();
     const { user: currentUser } = useSelector((state) => state.auth);
@@ -128,7 +140,7 @@ const GroupChatPage = () => {
     const fileInputRef = useRef(null);
 
     const { id: currentUserId, name: currentUserName, profilePhotoUrl: currentUserPhoto } = currentUser;
-
+    // ... baaki functions (fetchGroupData, handleRemoveMember, etc.) ...
     const fetchGroupData = useCallback(async () => {
         if (!groupId) return;
         setLoading(true);
@@ -162,7 +174,7 @@ const GroupChatPage = () => {
             }
         }
     };
-
+    
     const startGroupCall = useCallback((type) => {
         setCallType(type);
         setGroupCallState('calling');
@@ -205,7 +217,6 @@ const GroupChatPage = () => {
         socketService.emit('leave-group-call', { groupId, userId: currentUserId });
     }, [stream, group, groupId, groupCallState, fetchGroupData, currentUserId]);
 
-
     useEffect(() => {
         if (!groupId) return;
         socketService.emit("join-group-room", groupId);
@@ -215,14 +226,14 @@ const GroupChatPage = () => {
         const handleIncomingCall = (data) => { if (data.groupId === groupId && groupCallState === 'idle') { setIncomingCallData(data); setCallType(data.callType); setGroupCallState('incoming'); } };
         const handleNewUserJoining = ({ from }) => {
             if (!stream || from.id === currentUserId) return;
-            const peer = new Peer({ initiator: true, trickle: false, stream });
+            const peer = new Peer({ initiator: true, trickle: false, stream, ...peerOptions });
             peer.on('signal', signal => { socketService.emit('send-signal-group', { signal, to: from.id, from: { id: currentUserId, name: currentUserName, profilePhotoUrl: currentUserPhoto } }); });
             peersRef.current[from.id] = { peer, peerID: from.id, name: from.name, profilePhotoUrl: from.profilePhotoUrl };
             setPeers({...peersRef.current});
         };
         const handleReceivingSignal = ({ signal, from }) => {
             if (groupCallState === 'calling') { setGroupCallState('active'); }
-            const peer = new Peer({ initiator: false, trickle: false, stream });
+            const peer = new Peer({ initiator: false, trickle: false, stream, ...peerOptions });
             peer.on('signal', returnSignal => { socketService.emit('return-signal-group', { signal: returnSignal, to: from.id }); });
             peer.signal(signal);
             peersRef.current[from.id] = { peer, peerID: from.id, name: from.name, profilePhotoUrl: from.profilePhotoUrl };
@@ -246,6 +257,8 @@ const GroupChatPage = () => {
         };
     }, [groupId, groupCallState, stream, currentUserId, currentUserName, currentUserPhoto]);
 
+    // ... baaki JSX ...
+    // useEffect, handleEmojiClick, handleSendMessage, etc.
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);

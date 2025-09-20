@@ -271,7 +271,8 @@ const ChatPage = () => {
             setCallState('calling');
             setCallType(type);
 
-            const peer = new Peer({ initiator: true, trickle: false, stream });
+            const peer = new Peer({ initiator: true, trickle: false, stream, ...peerOptions });
+
 
             peer.on('signal', data => {
                 const payload = { 
@@ -305,6 +306,14 @@ const ChatPage = () => {
             alert(`Could not start call. Error: ${err.name}. Please check camera/mic permissions in your browser.`);
         });
     };
+const peerOptions = {
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+    ],
+  },
+};
 
     const answerCall = () => {
         const constraints = { video: callType === 'video', audio: true };
@@ -313,7 +322,7 @@ const ChatPage = () => {
             if (myVideo.current) myVideo.current.srcObject = stream;
             setCallState('active');
             durationIntervalRef.current = setInterval(() => setCallDuration(prev => prev + 1), 1000);
-            const peer = new Peer({ initiator: false, trickle: false, stream });
+            const peer = new Peer({ initiator: false, trickle: false, stream, ...peerOptions });
             peer.on('signal', data => { socketService.emit('answer-call', { signal: data, to: caller.id }); });
             peer.on('stream', remoteStream => { if(userVideo.current) userVideo.current.srcObject = remoteStream; });
             peer.signal(callerSignal);
