@@ -1,3 +1,5 @@
+// client/src/pages/ChatPage.jsx (FINAL - WEBRTC FIXES)
+
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
@@ -144,9 +146,11 @@ const ChatPage = () => {
     const [selectedMessages, setSelectedMessages] = useState(new Set());
     const [pinnedMessage, setPinnedMessage] = useState(null);
     const [isForwarding, setIsForwarding] = useState(false);
+    
+    // Calling Feature States
     const [callState, setCallState] = useState('idle');
     const [callType, setCallType] = useState('video');
-    const [stream, setStream] = useState(null);
+    const [stream, setStream] = useState(null); // <<< IMPORTANT: stream ab state hai
     const [caller, setCaller] = useState({});
     const [callerSignal, setCallerSignal] = useState();
     const [isMuted, setIsMuted] = useState(false);
@@ -275,7 +279,7 @@ const ChatPage = () => {
         const constraints = { video: type === 'video', audio: true };
         navigator.mediaDevices.getUserMedia(constraints).then(stream => {
             setStream(stream);
-            if(myVideo.current) myVideo.current.srcObject = stream;
+            if (myVideo.current) myVideo.current.srcObject = stream;
 
             setCallState('calling');
             setCallType(type);
@@ -284,7 +288,6 @@ const ChatPage = () => {
             connectionRef.current = peer;
 
             const handleCallAccepted = (signal) => {
-                console.log("[Call] Call was accepted. Signaling peer.");
                 setCallState('active');
                 durationIntervalRef.current = setInterval(() => setCallDuration(prev => prev + 1), 1000);
                 if (connectionRef.current) {
@@ -323,24 +326,24 @@ const ChatPage = () => {
             durationIntervalRef.current = setInterval(() => setCallDuration(prev => prev + 1), 1000);
             
             const peer = new Peer({ initiator: false, stream, ...peerOptions });
+            connectionRef.current = peer;
             
             peer.on('signal', data => { socketService.emit('answer-call', { signal: data, to: caller.id }); });
             peer.on('stream', remoteStream => { if(userVideo.current) userVideo.current.srcObject = remoteStream; });
             
             peer.signal(callerSignal);
-            connectionRef.current = peer;
         }).catch(err => console.error("getUserMedia error:", err));
     };
     
     const toggleMute = () => {
-        if (stream) {
+        if (stream && stream.getAudioTracks().length > 0) {
             stream.getAudioTracks()[0].enabled = !isMuted;
             setIsMuted(!isMuted);
         }
     };
 
     const toggleVideo = () => {
-        if (stream && callType === 'video') {
+        if (stream && callType === 'video' && stream.getVideoTracks().length > 0) {
             stream.getVideoTracks()[0].enabled = !isVideoOff;
             setIsVideoOff(!isVideoOff);
         }
