@@ -139,10 +139,19 @@ const socketHandler = (io) => {
         console.log("------------------------------------");
     });
     socket.on("answer-call", (data) => {
+        console.log("------------------------------------");
+        console.log("[Socket Event] Received 'answer-call' from:", socket.user.name);
+        console.log("Answering call to user ID:", data.to);
+        
         const targetSocketId = userSocketMap[data.to];
+        
         if (targetSocketId) {
+            console.log(`SUCCESS: Found target socket ID: ${targetSocketId}. Emitting 'call-accepted'.`);
             io.to(targetSocketId).emit("call-accepted", data.signal);
+        } else {
+            console.error(`FAILURE: Could not find socket ID for user ${data.to} to send answer.`);
         }
+        console.log("------------------------------------");
     });
     socket.on("hang-up", (data) => {
         const targetSocketId = userSocketMap[data.to];

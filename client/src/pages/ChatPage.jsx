@@ -1,5 +1,3 @@
-// client/src/pages/ChatPage.jsx (FINAL - WEBRTC FIXES)
-
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
@@ -130,10 +128,10 @@ const ChatPage = () => {
     const navigate = useNavigate();
     const dispatch = useDispatch();
     
-    const { user: currentUser } = useSelector((state) => state.auth);
     const { connections } = useSelector((state) => state.connections);
+    const { user: currentUser } = useSelector((state) => state.auth);
     const activeChatMessages = useSelector((state) => state.chat.messages[userId] || []);
-    const chatUserConnection = useSelector((state) => state.connections.connections.find(c => c.users.some(u => u._id === userId)));
+    const chatUserConnection = connections.find(c => c.users.some(u => u._id === userId));
     const chatUser = chatUserConnection?.users.find(u => u._id === userId);
 
     const [isTyping, setIsTyping] = useState(false);
@@ -147,10 +145,9 @@ const ChatPage = () => {
     const [pinnedMessage, setPinnedMessage] = useState(null);
     const [isForwarding, setIsForwarding] = useState(false);
     
-    // Calling Feature States
     const [callState, setCallState] = useState('idle');
     const [callType, setCallType] = useState('video');
-    const [stream, setStream] = useState(null); // <<< IMPORTANT: stream ab state hai
+    const [stream, setStream] = useState(null);
     const [caller, setCaller] = useState({});
     const [callerSignal, setCallerSignal] = useState();
     const [isMuted, setIsMuted] = useState(false);
@@ -166,84 +163,6 @@ const ChatPage = () => {
     const typingTimeoutRef = useRef(null);
 
     const currentWallpaper = chatUserConnection?.chatWallpaper || '';
-
-    useEffect(() => {
-        const foundPinned = activeChatMessages.find(msg => msg.isPinned);
-        setPinnedMessage(foundPinned || null);
-    }, [activeChatMessages]);
-
-    useEffect(() => {
-        const handleWallpaperChanged = ({ connectionId, wallpaperUrl }) => {
-            if (connectionId === chatUserConnection?._id) {
-                dispatch(setChatWallpaper({ connectionId, wallpaperUrl }));
-            }
-        };
-        socketService.on('wallpaper-changed', handleWallpaperChanged);
-        return () => {
-            socketService.off('wallpaper-changed', handleWallpaperChanged);
-        }
-    }, [chatUserConnection, dispatch]);
-
-    const handleMessageLongPress = (messageId) => {
-        setSelectionMode(true);
-        setSelectedMessages(new Set([messageId]));
-    };
-    
-    const handleMessageClick = (messageId) => {
-        if (!selectionMode) return;
-        const newSelected = new Set(selectedMessages);
-        if (newSelected.has(messageId)) {
-            newSelected.delete(messageId);
-        } else {
-            newSelected.add(messageId);
-        }
-        if (newSelected.size === 0) {
-            setSelectionMode(false);
-        }
-        setSelectedMessages(newSelected);
-    };
-
-    const clearSelection = () => {
-        setSelectionMode(false);
-        setSelectedMessages(new Set());
-    };
-
-    const handleDeleteSelected = async () => {
-        if (window.confirm(`Delete ${selectedMessages.size} message(s)?`)) {
-            try {
-                await deleteMultipleMessages(Array.from(selectedMessages));
-                dispatch(getMessages(userId));
-                clearSelection();
-            } catch (error) {
-                alert("Failed to delete messages. You can only delete your own messages.");
-            }
-        }
-    };
-    
-    const handlePinSelected = async () => {
-        const messageId = selectedMessages.values().next().value;
-        try {
-            await togglePinMessage(messageId);
-            dispatch(getMessages(userId));
-            clearSelection();
-        } catch (error) {
-            alert("Failed to pin message.");
-        }
-    };
-
-    const handleForwardSelected = async (forwardToUserId) => {
-        try {
-            for (const messageId of selectedMessages) {
-                await forwardMessage(messageId, forwardToUserId);
-            }
-            alert(`Message(s) forwarded successfully!`);
-            clearSelection();
-            setIsForwarding(false);
-        } catch (error) {
-            alert("Failed to forward message(s).");
-            console.error(error);
-        }
-    };
 
     const leaveCall = useCallback(async (logIt = true) => {
         if (logIt && callState !== 'idle') {
@@ -274,7 +193,30 @@ const ChatPage = () => {
             socketService.emit('hang-up', { to: otherUserId });
         }
     }, [callState, userId, caller.id, stream, callDuration, dispatch]);
-  
+
+    useEffect(() => {
+        if (!currentUser || !userId) return;
+
+        socketService.emit('mark-messages-read', { chatUserId: userId });
+        dispatch(getMessages(userId));
+        
+        const handleCallMade = ({ signal, from, type }) => {
+            setCaller(from);
+            setCallerSignal(signal);
+            setCallType(type);
+            setCallState('incoming');
+        };
+        const handleCallEnded = () => leaveCall(false);
+
+        socketService.on("call-made", handleCallMade);
+        socketService.on("call-ended", handleCallEnded);
+
+        return () => {
+            socketService.off("call-made", handleCallMade);
+            socketService.off("call-ended", handleCallEnded);
+        };
+    }, [userId, currentUser, dispatch, leaveCall]);
+
     const callUser = (type) => {
         const constraints = { video: type === 'video', audio: true };
         navigator.mediaDevices.getUserMedia(constraints).then(stream => {
@@ -337,19 +279,87 @@ const ChatPage = () => {
     
     const toggleMute = () => {
         if (stream && stream.getAudioTracks().length > 0) {
-            stream.getAudioTracks()[0].enabled = !isMuted;
-            setIsMuted(!isMuted);
+            const audioTrack = stream.getAudioTracks()[0];
+            audioTrack.enabled = !audioTrack.enabled;
+            setIsMuted(!audioTrack.enabled);
         }
     };
 
     const toggleVideo = () => {
         if (stream && callType === 'video' && stream.getVideoTracks().length > 0) {
-            stream.getVideoTracks()[0].enabled = !isVideoOff;
-            setIsVideoOff(!isVideoOff);
+            const videoTrack = stream.getVideoTracks()[0];
+            videoTrack.enabled = !videoTrack.enabled;
+            setIsVideoOff(!videoTrack.enabled);
+        }
+    };
+    
+    useEffect(() => {
+        const foundPinned = activeChatMessages.find(msg => msg.isPinned);
+        setPinnedMessage(foundPinned || null);
+    }, [activeChatMessages]);
+
+   
+    const handleMessageLongPress = (messageId) => {
+        setSelectionMode(true);
+        setSelectedMessages(new Set([messageId]));
+    };
+    
+    const handleMessageClick = (messageId) => {
+        if (!selectionMode) return;
+        const newSelected = new Set(selectedMessages);
+        if (newSelected.has(messageId)) {
+            newSelected.delete(messageId);
+        } else {
+            newSelected.add(messageId);
+        }
+        if (newSelected.size === 0) {
+            setSelectionMode(false);
+        }
+        setSelectedMessages(newSelected);
+    };
+
+    const clearSelection = () => {
+        setSelectionMode(false);
+        setSelectedMessages(new Set());
+    };
+
+    const handleDeleteSelected = async () => {
+        if (window.confirm(`Delete ${selectedMessages.size} message(s)?`)) {
+            try {
+                await deleteMultipleMessages(Array.from(selectedMessages));
+                dispatch(getMessages(userId));
+                clearSelection();
+            } catch (error) {
+                alert("Failed to delete messages. You can only delete your own messages.");
+            }
+        }
+    };
+    
+    const handlePinSelected = async () => {
+        const messageId = selectedMessages.values().next().value;
+        try {
+            await togglePinMessage(messageId);
+            dispatch(getMessages(userId));
+            clearSelection();
+        } catch (error) {
+            alert("Failed to pin message.");
         }
     };
 
-    const handleTyping = () => {
+    const handleForwardSelected = async (forwardToUserId) => {
+        try {
+            for (const messageId of selectedMessages) {
+                await forwardMessage(messageId, forwardToUserId);
+            }
+            alert(`Message(s) forwarded successfully!`);
+            clearSelection();
+            setIsForwarding(false);
+        } catch (error) {
+            alert("Failed to forward message(s).");
+            console.error(error);
+        }
+    };
+     const handleTyping = () => {
         socketService.emit("typing", { receiverId: userId });
         if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
         typingTimeoutRef.current = setTimeout(() => { socketService.emit("stop-typing", { receiverId: userId }); }, 2000);
@@ -357,25 +367,20 @@ const ChatPage = () => {
 
     useEffect(() => {
         if (currentUser && userId) {
-            dispatch(getMessages(userId));
-            socketService.emit('mark-messages-read', { chatUserId: userId });
+            
             dispatch(fetchConnections(currentUser.id));
             
-            const handleCallMade = ({ signal, from, type }) => { setCaller(from); setCallerSignal(signal); setCallType(type); setCallState('incoming'); };
-            const handleCallEnded = () => leaveCall(false);
             const handleUserTyping = ({ userId: typingUserId }) => { if (typingUserId === userId) setIsTyping(true); };
             const handleUserStopTyping = ({ userId: stopTypingUserId }) => { if (stopTypingUserId === userId) setIsTyping(false); };
             
             socketService.joinChat(userId);
-            socketService.on("call-made", handleCallMade);
-            socketService.on("call-ended", handleCallEnded);
+            
             socketService.onUserTyping(handleUserTyping);
             socketService.onUserStopTyping(handleUserStopTyping);
             
             return () => {
                 socketService.leaveChat(userId);
-                socketService.off("call-made", handleCallMade);
-                socketService.off("call-ended", handleCallEnded);
+               
                 socketService.off("user-typing", handleUserTyping);
                 socketService.off("user-stop-typing", handleUserStopTyping);
             };
