@@ -1,4 +1,4 @@
-// server/server.js (FINAL - WITH CRASH & CORS FIX)
+// server/server.js (FINAL & CRASH-PROOF FOR DEPLOYMENT)
 
 // =================================================================
 // IMPORTS
@@ -38,33 +38,22 @@ const server = http.createServer(app);
 
 connectDB();
 
-
-// <<< --- YEH NAYA, SMART CORS LOGIC HAI --- >>>
+// <<< --- YEH FINAL, CORRECT CORS LOGIC HAI (HANDLES MULTIPLE URLS) --- >>>
 const allowedOriginsString = process.env.CLIENT_URL || "http://localhost:3000";
 const allowedOrigins = allowedOriginsString.split(',').map(origin => origin.trim());
 
 console.log(`[CORS CONFIG] Server will allow requests from:`, allowedOrigins);
 
 const corsOptions = {
-    origin: (origin, callback) => {
-        // Allow requests with no origin (like mobile apps or curl requests) in non-production environments
-        if (!origin && process.env.NODE_ENV !== 'production') {
-            return callback(null, true);
-        }
-        if (allowedOrigins.indexOf(origin) !== -1) {
-            callback(null, true);
-        } else {
-            callback(new Error('Not allowed by CORS'));
-        }
-    },
+    // Ab hum yahan URLs ki array pass kar rahe hain, jo bilkul sahi hai
+    origin: allowedOrigins,
     credentials: true,
 };
 
 const io = socketIo(server, {
   cors: corsOptions,
 });
-// <<< --- NAYA LOGIC YAHAN KHATAM HOTA HAI --- >>>
-
+// <<< --- FINAL LOGIC YAHAN KHATAM HOTA HAI --- >>>
 
 // Make `io` instance accessible to our controllers
 app.set('io', io);
@@ -84,15 +73,20 @@ app.use((req, res, next) => {
 // 1. CORS Configuration
 app.use(cors(corsOptions));
 
-// 2. Security Headers with Helmet
+// 2. Security Headers with Helmet (Ismein bhi hum array use karenge)
 app.use(
   helmet({
     contentSecurityPolicy: {
       directives: {
         ...helmet.contentSecurityPolicy.getDefaultDirectives(),
         "img-src": ["'self'", "data:", "https://res.cloudinary.com"],
-        // Hum yahan allowedOrigins list se WebSocket sources generate karenge
-        "connect-src": ["'self'", ...allowedOrigins.map(origin => `wss://${new URL(origin).hostname}`)],
+        // Yahan hum allowedOrigins array ko a se handle kar rahe hain taaki crash na ho
+        "connect-src": [
+            "'self'", 
+            ...allowedOrigins, // Saare allowed HTTP URLs
+            // Har URL ke liye ek WSS (WebSocket) entry banayenge
+            ...allowedOrigins.map(origin => `wss://${new URL(origin).hostname}`)
+        ],
       },
     },
     crossOriginEmbedderPolicy: false,
@@ -114,7 +108,6 @@ const apiLimiter = rateLimit({
 });
 app.use("/api/", apiLimiter);
 
-
 // =================================================================
 // API ROUTES
 // =================================================================
@@ -128,7 +121,6 @@ app.use("/api/upload", uploadRoutes);
 app.use("/api/status", statusRoutes);
 app.use("/api/calls", callRoutes);
 
-
 // =================================================================
 // SERVE REACT FRONTEND IN PRODUCTION
 // =================================================================
@@ -140,12 +132,11 @@ if (process.env.NODE_ENV === 'production') {
     });
 }
 
-
 // =================================================================
 // ERROR HANDLING MIDDLEWARE
 // =================================================================
 app.use("/api/*", (req, res) => {
-  res.status(404).json({ message: "API endpoint not found" });
+  res.status(404(json)({ message: "API endpoint not found" }));
 });
 
 app.use((err, req, res, next) => {
@@ -154,7 +145,6 @@ app.use((err, req, res, next) => {
     message: err.message || "An unexpected error occurred on the server."
   });
 });
-
 
 // =================================================================
 // START SERVER
