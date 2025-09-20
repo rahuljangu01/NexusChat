@@ -1,5 +1,6 @@
-const mongoose = require("mongoose")
-const bcrypt = require("bcryptjs")
+const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
+const crypto = require("crypto"); // Yeh line add karni hai
 
 const userSchema = new mongoose.Schema(
   {
@@ -26,6 +27,7 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: [true, "Password is required"],
       minlength: [6, "Password must be at least 6 characters"],
+      select: false, // Password by default query mein nahi aayega
     },
     profilePhotoUrl: {
       type: String,
@@ -60,29 +62,54 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // <<< --- YEH NAYE FIELDS ADD KIYE GAYE HAIN --- >>>
+    passwordResetToken: String,
+    passwordResetExpires: Date,
   },
   {
     timestamps: true,
   },
-)
+);
 
 // Index for search functionality
-userSchema.index({ name: "text", collegeId: "text", department: "text" })
-userSchema.index({ email: 1 })
-userSchema.index({ collegeId: 1 })
+userSchema.index({ name: "text", collegeId: "text", department: "text" });
+userSchema.index({ email: 1 });
+userSchema.index({ collegeId: 1 });
 
 // Hash password before saving
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password")) {
-    next()
+    return next();
   }
-  const salt = await bcrypt.genSalt(10)
-  this.password = await bcrypt.hash(this.password, salt)
-})
+  const salt = await bcrypt.genSalt(10);
+  this.password = await bcrypt.hash(this.password, salt);
+  next();
+});
 
 // Compare password method
 userSchema.methods.comparePassword = async function (enteredPassword) {
-  return await bcrypt.compare(enteredPassword, this.password)
-}
+  return await bcrypt.compare(enteredPassword, this.password);
+};
 
-module.exports = mongoose.model("User", userSchema)
+
+// <<< --- YEH NAYA METHOD ADD KIYA GAYA HAI --- >>>
+// Generate and hash password reset token
+userSchema.methods.createPasswordResetToken = function() {
+  // 1. Ek random token generate karo
+  const resetToken = crypto.randomBytes(32).toString('hex');
+
+  // 2. Us token ko hash karke database mein save karo (security ke liye)
+  this.passwordResetToken = crypto
+    .createHash('sha256')
+    .update(resetToken)
+    .digest('hex');
+  
+  // 3. Token ki expiry set karo (10 minute)
+  this.passwordResetExpires = Date.now() + 10 * 60 * 1000; 
+
+  // 4. Plain (un-hashed) token ko email mein bhejne ke liye return karo
+  return resetToken;
+};
+
+
+module.exports = mongoose.model("User", userSchema);

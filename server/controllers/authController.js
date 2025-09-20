@@ -4,7 +4,8 @@ const { validationResult } = require("express-validator");
 const User = require("../models/User");
 const Connection = require("../models/Connection");
 const generateToken = require("../utils/generateToken");
-const { sendVerificationEmail } = require("../utils/sendEmail");
+const { sendVerificationEmail, sendPasswordResetEmail } = require("../utils/sendEmail");
+const crypto = require("crypto");
 
 // Temporary in-memory storage for OTPs. For production, use a database like Redis.
 const verificationCodes = {};
@@ -233,6 +234,71 @@ const changePassword = async (req, res) => {
   }
 };
 
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      // Security ke liye hum user ko nahi batate ki email exist karta hai ya nahi
+      return res.status(200).json({ message: 'If a user with that email exists, a password reset link has been sent.' });
+    }
+
+    const resetToken = user.createPasswordResetToken();
+    await user.save({ validateBeforeSave: false });
+
+    // Frontend ke route ka URL
+    const resetURL = `${process.env.CLIENT_URL.split(',')[0]}/reset-password/${resetToken}`;
+
+    await sendPasswordResetEmail(user.email, resetURL);
+
+    res.status(200).json({ message: 'If a user with that email exists, a password reset link has been sent.' });
+  } catch (error) {
+    console.error("Forgot password error:", error);
+    // Token aur expiry ko hata do agar email fail ho jaaye
+    if (req.user) {
+        req.user.passwordResetToken = undefined;
+        req.user.passwordResetExpires = undefined;
+        await req.user.save({ validateBeforeSave: false });
+    }
+    res.status(500).json({ message: "Error sending password reset email." });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  try {
+    const hashedToken = crypto
+      .createHash('sha256')
+      .update(req.params.token)
+      .digest('hex');
+
+    const user = await User.findOne({
+      passwordResetToken: hashedToken,
+      passwordResetExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: 'Token is invalid or has expired.' });
+    }
+
+    if (!req.body.password || req.body.password.length < 6) {
+        return res.status(400).json({ message: "Password must be at least 6 characters long." });
+    }
+
+    user.password = req.body.password;
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    await user.save();
+
+    // Naye password ke saath naya JWT token bhejo
+    const token = generateToken(user._id);
+    res.status(200).json({ success: true, token, message: "Password reset successful!" });
+  } catch (error) {
+    console.error("Reset password error:", error);
+    res.status(500).json({ message: 'Error resetting password.' });
+  }
+};
+
 module.exports = {
   sendVerification,
   verifyAndRegister,
@@ -240,4 +306,6 @@ module.exports = {
   getMe,
   updateProfile,
   changePassword,
+  forgotPassword,
+  resetPassword
 };

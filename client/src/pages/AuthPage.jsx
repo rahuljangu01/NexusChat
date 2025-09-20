@@ -1,17 +1,15 @@
-// client/src/pages/AuthPage.jsx (FINAL - With Input Style Fix)
-
 import { useState, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { loginUser, clearError } from "../store/slices/authSlice";
-import { sendVerificationCode, verifyAndRegisterUser } from "../utils/api";
+import { sendVerificationCode, verifyAndRegisterUser, requestPasswordReset } from "../utils/api";
 import { motion, AnimatePresence } from "framer-motion";
 import "./AuthPage.css";
-
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../components/ui/dialog";
 
 const AuthPage = () => {
   const dispatch = useDispatch();
@@ -19,7 +17,7 @@ const AuthPage = () => {
   const { loading, error, isAuthenticated } = useSelector((state) => state.auth);
 
   const [activeTab, setActiveTab] = useState("login");
-  const [step, setStep] = useState(1); // 1 for details form, 2 for OTP form
+  const [step, setStep] = useState(1);
   const [apiError, setApiError] = useState("");
   const [isSendingCode, setIsSendingCode] = useState(false);
 
@@ -27,6 +25,12 @@ const AuthPage = () => {
   const [registerData, setRegisterData] = useState({
     name: "", email: "", collegeId: "", password: "", department: "", year: "", code: ""
   });
+
+  // States for Forgot Password Dialog
+  const [isForgotDialogOpen, setIsForgotDialogOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotMessage, setForgotMessage] = useState("");
+  const [isSendingLink, setIsSendingLink] = useState(false);
 
   useEffect(() => { 
     if (isAuthenticated) {
@@ -77,6 +81,20 @@ const AuthPage = () => {
       const errorMessage = err.response?.data?.message || "Registration failed.";
       setApiError(errorMessage);
       dispatch({ type: 'auth/register/rejected', payload: errorMessage });
+    }
+  };
+
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    setForgotMessage("");
+    setIsSendingLink(true);
+    try {
+        const res = await requestPasswordReset(forgotEmail);
+        setForgotMessage(res.message);
+    } catch (err) {
+        setForgotMessage(err.response?.data?.message || "An error occurred.");
+    } finally {
+        setIsSendingLink(false);
     }
   };
 
@@ -144,6 +162,11 @@ const AuthPage = () => {
                 <motion.div variants={itemVariants}>
                   <Label htmlFor="login-password">Password</Label>
                   <Input id="login-password" name="password" type="password" value={loginData.password} onChange={handleLoginChange} required className={inputStyles} />
+                </motion.div>
+                <motion.div variants={itemVariants} className="flex justify-end">
+                  <Button variant="link" type="button" onClick={() => { setIsForgotDialogOpen(true); setForgotMessage(''); setForgotEmail(''); }} className="px-0 text-sm text-indigo-400 h-auto py-0">
+                    Forgot Password?
+                  </Button>
                 </motion.div>
                 <motion.div variants={itemVariants}>
                   <Button type="submit" className="w-full h-12 text-lg font-bold" disabled={loading}>
@@ -219,7 +242,27 @@ const AuthPage = () => {
           </Tabs>
         </div>
       </motion.div>
+
+      <Dialog open={isForgotDialogOpen} onOpenChange={setIsForgotDialogOpen}>
+          <DialogContent className="bg-slate-900 border-slate-700 text-white">
+              <DialogHeader>
+                  <DialogTitle>Reset Your Password</DialogTitle>
+                  <DialogDescription>Enter your @lpu.in email to receive a password reset link.</DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleForgotPassword} className="space-y-4 pt-4">
+                  <div>
+                      <Label htmlFor="forgot-email">Email</Label>
+                      <Input id="forgot-email" type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} required className={inputStyles} />
+                  </div>
+                  {forgotMessage && <p className={`text-sm text-center ${forgotMessage.includes('error') ? 'text-red-400' : 'text-green-400'}`}>{forgotMessage}</p>}
+                  <Button type="submit" className="w-full" disabled={isSendingLink}>
+                      {isSendingLink ? "Sending Link..." : "Send Reset Link"}
+                  </Button>
+              </form>
+          </DialogContent>
+      </Dialog>
     </div>
   );
 };
+
 export default AuthPage;

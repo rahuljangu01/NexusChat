@@ -24,6 +24,7 @@ import { MessageSquare } from "lucide-react";
 import { socketService } from "./services/socketService";
 import { addMessage, updateSentMessagesStatus } from "./store/slices/chatSlice";
 import { setUserOnline, setUserOffline, updateConnectionLastMessage, incrementUnreadCount, updateConnectionProfile } from "./store/slices/connectionsSlice";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
 
 const DashboardWelcome = () => (
     <motion.main 
@@ -105,6 +106,8 @@ function App() {
       <Routes location={location} key={location.pathname}>
         <Route path="/" element={<AuthPage />} />
         
+        <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
+
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>}>
           <Route index element={<DashboardWelcome />} />
           <Route path="chat/:userId" element={<ChatPage />} />
