@@ -24,7 +24,6 @@ class EncryptionService {
         let storedKeyPair = localStorage.getItem(KEY_PAIR_STORAGE_KEY);
         if (storedKeyPair) {
             this.keyPair = JSON.parse(storedKeyPair);
-            console.log("E2EE Keys loaded from Local Storage.");
         } else {
             console.log("No E2EE keys found in Local Storage. Generating new ones...");
             const newKeyPair = nacl.box.keyPair();
@@ -35,7 +34,6 @@ class EncryptionService {
             localStorage.setItem(KEY_PAIR_STORAGE_KEY, JSON.stringify(this.keyPair));
             
             try {
-                console.log("Attempting to store Public Key on server:", this.keyPair.publicKey);
                 await storePublicKey({ publicKey: this.keyPair.publicKey });
                 console.log("SUCCESS: E2EE Keys generated and public key stored on server.");
             } catch (error) {
@@ -50,9 +48,7 @@ class EncryptionService {
             return fromBase64(this.theirPublicKeys[userId]);
         }
         try {
-            console.log(`Fetching public key for user: ${userId}`);
             const { publicKey } = await getPublicKey(userId);
-            console.log(`SUCCESS: Fetched public key for user ${userId}`);
             this.theirPublicKeys[userId] = publicKey;
             return fromBase64(publicKey);
         } catch (error) {
@@ -78,6 +74,9 @@ class EncryptionService {
     
     // Message ko decrypt karna
     decrypt(encryptedMessage, theirPublicKey) {
+        if (!this.keyPair || !this.keyPair.secretKey) {
+            throw new Error("My secret key is not available for decryption.");
+        }
         const secretKey = fromBase64(this.keyPair.secretKey);
         
         if (typeof encryptedMessage !== 'string' || encryptedMessage.length === 0) {

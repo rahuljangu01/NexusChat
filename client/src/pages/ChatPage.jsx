@@ -20,22 +20,8 @@ import { getMessages, addMessage, updateMessage } from "../store/slices/chatSlic
 import { setChatWallpaper, fetchConnections } from "../store/slices/connectionsSlice";
 import { uploadProfilePhoto, removeConnection, logCall, togglePinMessage, deleteMultipleMessages, forwardMessage, updateWallpaper } from "../utils/api";
 
-const peerOptions = {
-  config: {
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-    ],
-  },
-};
-
-const wallpapers = [
-    { name: 'Default', url: '' },
-    { name: 'Doodle', url: '/wallpapers/doodle.png' },
-    { name: 'Nature', url: '/wallpapers/nature.jpg' },
-    { name: 'Dark Space', url: '/wallpapers/dark-space.jpg' },
-    { name: 'Abstract', url: '/wallpapers/abstract.jpg' },
-];
+const peerOptions = { config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }]}};
+const wallpapers = [{ name: 'Default', url: '' }, { name: 'Doodle', url: '/wallpapers/doodle.png' }, { name: 'Nature', url: '/wallpapers/nature.jpg' }, { name: 'Dark Space', url: '/wallpapers/dark-space.jpg' }, { name: 'Abstract', url: '/wallpapers/abstract.jpg' }];
 
 const WallpaperDialog = ({ open, onOpenChange, connectionId, currentWallpaper, onWallpaperChange }) => {
     const fileInputRef = useRef(null);
@@ -124,9 +110,9 @@ const ForwardDialog = ({ connections, onForward, currentUser }) => {
     );
 };
 
-const MessageItem = ({ item, isSender, theirPublicKey }) => {
+const MessageItem = ({ item, isSender, theirPublicKey, myPublicKey }) => {
     const [decryptedContent, setDecryptedContent] = useState(() => {
-        if (isSender && item.messageType === 'encrypted_text') return item.content;
+        if (item.messageType === 'text') return item.content;
         if (item.messageType === 'encrypted_text') return '🔒 Decrypting...';
         return item.content;
     });
@@ -134,16 +120,19 @@ const MessageItem = ({ item, isSender, theirPublicKey }) => {
     useEffect(() => {
         let isMounted = true;
         const decrypt = async () => {
-            if (!isSender && item.messageType === 'encrypted_text' && item.content && theirPublicKey) {
+            if (item.messageType === 'encrypted_text' && item.content) {
+                const senderPublicKey = isSender ? myPublicKey : theirPublicKey;
+                if (!senderPublicKey) {
+                    if (isMounted) setDecryptedContent("🔒 Key not found.");
+                    return;
+                }
                 try {
-                    const plaintext = encryptionService.decrypt(item.content, theirPublicKey);
+                    const plaintext = encryptionService.decrypt(item.content, senderPublicKey);
                     if (isMounted) setDecryptedContent(plaintext);
                 } catch (e) {
                     console.error("Decryption failed for message:", item._id, e);
                     if (isMounted) setDecryptedContent("🔒 Could not decrypt message.");
                 }
-            } else if (isSender && item.messageType === 'text') {
-                if (isMounted) setDecryptedContent(item.content);
             }
         };
 
@@ -154,12 +143,14 @@ const MessageItem = ({ item, isSender, theirPublicKey }) => {
         }
 
         return () => { isMounted = false; };
-    }, [item.content, item.messageType, theirPublicKey, isSender, item._id]); // <<< YEH HAI FINAL FIX
+    }, [item.content, item.messageType, theirPublicKey, myPublicKey, isSender, item._id]);
+
+    const contentWithLock = item.messageType === 'encrypted_text' ? `🔒 ${decryptedContent}` : decryptedContent;
 
     if (item.messageType === 'image' || item.messageType === 'file') {
         return ( <a href={item.content} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-3 text-white hover:underline"><Paperclip className="h-8 w-8 flex-shrink-0 text-slate-400" /><span>{item.fileName || 'View Attachment'}</span></a> );
     }
-    return <p className="px-2.5 py-1.5 text-sm break-words text-white">{decryptedContent}</p>;
+    return <p className="px-2.5 py-1.5 text-sm break-words text-white">{contentWithLock}</p>;
 };
 
 
@@ -176,6 +167,7 @@ const ChatPage = () => {
 
     const [message, setMessage] = useState("");
     const [theirPublicKey, setTheirPublicKey] = useState(null);
+    const [myPublicKey, setMyPublicKey] = useState(null);
     const [isTyping, setIsTyping] = useState(false);
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
     const [isInfoPanelOpen, setInfoPanelOpen] = useState(false);
@@ -208,11 +200,13 @@ const ChatPage = () => {
         const init = async () => {
             if (currentUser && userId) {
                 await encryptionService.initialize();
+                if (encryptionService.keyPair && encryptionService.keyPair.publicKey) {
+                    setMyPublicKey(encryptionService.fromBase64(encryptionService.keyPair.publicKey));
+                }
                 try {
                     const key = await encryptionService.getTheirPublicKey(userId);
                     setTheirPublicKey(key);
                 } catch (error) {
-                    console.error("Could not fetch recipient's public key.", error);
                     setTheirPublicKey(null);
                 }
             }
@@ -239,16 +233,13 @@ const ChatPage = () => {
             const optimisticMessage = { _id: tempId, sender: { _id: currentUser.id }, receiver: { _id: userId }, content: messageToSend, messageType: 'text', createdAt: new Date().toISOString(), status: 'sent', _type: 'message' };
             dispatch(addMessage({ chatId: userId, message: optimisticMessage }));
 
-            const response = await new Promise((resolve, reject) => {
-                socketService.emit('send-message', { receiverId: userId, content: encryptedContent, messageType: 'encrypted_text', tempId: tempId }, (ack) => {
-                    if (ack.error) reject(new Error(ack.error));
-                    else resolve(ack);
-                });
+            socketService.emit('send-message', { receiverId: userId, content: encryptedContent, messageType: 'encrypted_text', tempId: tempId }, (ack) => {
+                if (ack.error) {
+                    console.error("Server error sending message:", ack.error);
+                } else if (ack.message) {
+                    dispatch(updateMessage({ chatId: userId, tempId: tempId, finalMessage: ack.message }));
+                }
             });
-
-            if (response.message) {
-                dispatch(updateMessage({ chatId: userId, tempId: tempId, finalMessage: response.message }));
-            }
         } catch (error) {
             console.error("Failed to encrypt and send message:", error);
             alert("Could not send encrypted message.");
@@ -555,14 +546,13 @@ const ChatPage = () => {
                                 }
                                 const isSender = item.sender?._id === currentUser.id;
                                 const isSelected = selectedMessages.has(item._id);
-                                const keyForDecryption = isSender ? null : theirPublicKey;
                                 return (
                                     <div key={item._id || index} onContextMenu={(e) => { e.preventDefault(); handleMessageLongPress(item._id); }}>
                                         {showDateHeader && (<div className="text-center text-xs text-slate-500 my-4 bg-slate-800/50 self-center px-3 py-1 rounded-full">{format(new Date(item.createdAt), 'MMMM d, yyyy')}</div>)}
                                         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} onClick={() => handleMessageClick(item._id)} className={`flex items-end gap-1.5 my-0.5 rounded-lg transition-colors duration-200 ${isSender ? "justify-end" : "justify-start"} ${isSelected ? 'bg-indigo-500/20' : ''}`}>
                                             {!isSender && <Avatar className="h-6 w-6 self-end"><AvatarImage src={chatUser?.profilePhotoUrl}/><AvatarFallback className="text-xs">{chatUser?.name?.charAt(0)}</AvatarFallback></Avatar>}
                                             <div className={`message-bubble max-w-[70%] md:max-w-[60%] rounded-xl ${isSender ? "bg-indigo-600 sent" : "bg-[#2a2a36] received"}`}>
-                                                <MessageItem item={item} isSender={isSender} theirPublicKey={keyForDecryption} />
+                                                <MessageItem item={item} isSender={isSender} theirPublicKey={theirPublicKey} myPublicKey={myPublicKey} />
                                                 <span className="text-[10px] opacity-70 float-right mr-2 mb-1 self-end text-white/70 flex items-center">{formatTime(item.createdAt)}{isSender && item._type === 'message' && <MessageStatus status={item.status} />}</span>
                                             </div>
                                         </motion.div>
