@@ -1,4 +1,4 @@
-// client/src/pages/GroupsPage.jsx (COMPACT UI - FULL CODE)
+// client/src/pages/GroupsPage.jsx (UPDATED WITH DATA REFRESH LOGIC)
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSelector } from "react-redux";
@@ -142,18 +142,24 @@ export default function GroupsPage() {
   const [isCreateDialogOpen, setCreateDialogOpen] = useState(false);
 
   const fetchMyGroups = useCallback(async () => {
-    setLoading(true);
+    // Ab hum loading ko har baar true nahi karenge taaki background refresh smooth ho
     try {
       const res = await api.get("/groups/my-groups");
       setMyGroups(res.data.groups);
     } catch (error) {
       console.error("Failed to fetch groups:", error);
     } finally {
-      setLoading(false);
+      setLoading(false); // Loading ko bas aakhir mein false karenge
     }
   }, []);
 
-  useEffect(() => { fetchMyGroups(); }, [fetchMyGroups]);
+  // <<< --- YEH HAI SABSE ZAROORI BADLAAV --- >>>
+  // Yeh useEffect har baar chalega jab GroupsPage component screen par aayega
+  useEffect(() => { 
+    setLoading(true); // Component load hone par loading dikhao
+    fetchMyGroups(); 
+  }, [fetchMyGroups]);
+  // <<< --- BADLAAV YAHAN KHATAM HOTA HAI --- >>>
 
   const filteredGroups = myGroups.filter(group => 
     group.name.toLowerCase().includes(searchQuery.toLowerCase())
