@@ -1,10 +1,12 @@
-const express = require("express")
-const { searchUsers, getUserProfile } = require("../controllers/userController")
-const { protect } = require("../middleware/auth")
+// server/routes/users.js (CLEANED - NO E2EE)
 
-const router = express.Router()
+const express = require("express");
+const { searchUsers, getUserProfile } = require("../controllers/userController");
+const { protect } = require("../middleware/auth");
 
-router.get("/search", protect, searchUsers)
-router.get("/:userId", protect, getUserProfile)
+const router = express.Router();
 
-module.exports = router
+router.get("/search", protect, searchUsers);
+router.get("/:userId", protect, getUserProfile);
+
+module.exports = router;

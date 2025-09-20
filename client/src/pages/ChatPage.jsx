@@ -1,3 +1,5 @@
+// client/src/pages/ChatPage.jsx (STABLE VERSION - REVERTED E2EE)
+
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
@@ -298,7 +300,6 @@ const ChatPage = () => {
         setPinnedMessage(foundPinned || null);
     }, [activeChatMessages]);
 
-   
     const handleMessageLongPress = (messageId) => {
         setSelectionMode(true);
         setSelectedMessages(new Set([messageId]));
@@ -367,7 +368,6 @@ const ChatPage = () => {
 
     useEffect(() => {
         if (currentUser && userId) {
-            
             dispatch(fetchConnections(currentUser.id));
             
             const handleUserTyping = ({ userId: typingUserId }) => { if (typingUserId === userId) setIsTyping(true); };
@@ -380,7 +380,6 @@ const ChatPage = () => {
             
             return () => {
                 socketService.leaveChat(userId);
-               
                 socketService.off("user-typing", handleUserTyping);
                 socketService.off("user-stop-typing", handleUserStopTyping);
             };
