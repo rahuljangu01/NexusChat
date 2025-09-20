@@ -1,71 +1,18 @@
-// client/src/pages/StatusPage.jsx (FINAL - UPLOAD FIX)
+// client/src/pages/StatusPage.jsx (CLEANED)
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSelector } from "react-redux";
-import { Camera, Heart, Eye, Trash2, X, Send, Plus, MoreVertical } from "lucide-react";
+import { Heart, Eye, Trash2, X, Plus, MoreVertical } from "lucide-react"; // Camera hata diya gaya hai
 import { motion, AnimatePresence } from "framer-motion";
 import { formatDistanceToNowStrict } from 'date-fns';
 
 import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "../components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
-import { getFriendsStatuses, viewStatus, likeStatus, deleteStatus, uploadProfilePhoto, createStatus } from "../utils/api";
+import { getFriendsStatuses, viewStatus, likeStatus, deleteStatus } from "../utils/api";
 import "./Dashboard.css";
-
-const UploadStatusDialog = ({ onStatusUploaded }) => {
-    const [file, setFile] = useState(null);
-    const [preview, setPreview] = useState(null);
-    const [caption, setCaption] = useState("");
-    const [isUploading, setIsUploading] = useState(false);
-    const fileInputRef = useRef(null);
-
-    const handleFileChange = (e) => {
-        const selectedFile = e.target.files[0];
-        if (selectedFile) {
-            setFile(selectedFile);
-            setPreview(URL.createObjectURL(selectedFile));
-        }
-    };
-
-    const handleUpload = async () => {
-        if (!file) return;
-        setIsUploading(true);
-        try {
-            const uploadedFile = await uploadProfilePhoto(file);
-            await createStatus({
-                mediaUrl: uploadedFile.url,
-                mediaType: file.type.startsWith("image") ? "image" : "video",
-                caption: caption
-            });
-            onStatusUploaded(); // This tells the parent to refresh
-        } catch (error) {
-            console.error("Status upload failed:", error);
-            alert("Failed to upload status.");
-        } finally {
-            setIsUploading(false);
-        }
-    };
-
-    return (
-        <DialogContent className="bg-[#161b22] border-slate-700 text-white">
-            <DialogHeader><DialogTitle>Create a new Status</DialogTitle></DialogHeader>
-            <div className="py-4">
-                {preview ? (
-                    <div className="relative"><img src={preview} alt="Status preview" className="w-full max-h-[60vh] object-contain rounded-lg" /><Button variant="ghost" size="icon" className="absolute top-2 right-2 bg-black/50 rounded-full" onClick={() => { setFile(null); setPreview(null); }}><X className="h-4 w-4" /></Button></div>
-                ) : (
-                    <div onClick={() => fileInputRef.current.click()} className="flex flex-col items-center justify-center w-full h-64 border-2 border-dashed border-slate-600 rounded-lg cursor-pointer hover:bg-slate-800/50"><Camera className="h-12 w-12 text-slate-500" /><p className="mt-2 text-sm text-slate-500">Click to select an image</p></div>
-                )}
-                <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*" />
-            </div>
-            <div className="flex items-center gap-2">
-                <Input value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Add a caption..." className="bg-slate-800 border-slate-600" maxLength={100} />
-                <Button onClick={handleUpload} disabled={!file || isUploading} className="bg-indigo-600 hover:bg-indigo-500">{isUploading ? "Uploading..." : <Send className="h-4 w-4" />}</Button>
-            </div>
-        </DialogContent>
-    );
-};
+import UploadStatusDialog from "../components/UploadStatusDialog";
 
 const StatusPage = () => {
   const { user: currentUser } = useSelector((state) => state.auth);
@@ -148,7 +95,7 @@ const StatusPage = () => {
         <motion.div key={activeStatus._id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black z-50 flex flex-col items-center justify-between p-4">
             <div className="absolute top-4 left-4 right-4 flex gap-1 z-10">{activeGroup.statuses.map((_, index) => (<div key={index} className="flex-1 h-1 bg-white/30 rounded-full overflow-hidden">{index < activeStatusIndex && <div className="h-full w-full bg-white"/>}{index === activeStatusIndex && <motion.div initial={{ width: '0%' }} animate={{ width: '100%' }} transition={{ duration: 7, ease: "linear" }} className="h-full bg-white"/>}</div>))}</div>
             <header className="absolute top-8 left-4 right-4 flex items-center justify-between z-10"><div className="flex items-center gap-3"><Avatar className="h-10 w-10"><AvatarImage src={activeGroup.user.profilePhotoUrl}/><AvatarFallback>{activeGroup.user.name.charAt(0)}</AvatarFallback></Avatar><div><p className="font-semibold text-white">{activeGroup.user.name}</p><p className="text-xs text-gray-400">{formatDistanceToNowStrict(new Date(activeStatus.createdAt))} ago</p></div></div><Button variant="ghost" size="icon" onClick={() => setActiveGroupIndex(null)} className="text-white hover:bg-white/10 rounded-full"><X/></Button></header>
-            <div className="max-w-md w-full aspect-[9/16] rounded-lg overflow-hidden my-auto"><img src={activeStatus.mediaUrl} alt={activeStatus.caption} className="w-full h-full object-cover"/></div>
+            <div className="max-w-md w-full aspect-[9/16] rounded-lg overflow-hidden my-auto"><img src={activeStatus.mediaUrl} alt={activeStatus.caption} className="w-full h-full object-contain"/></div>
             <div className="absolute bottom-4 left-4 right-4 z-10 flex flex-col items-center gap-4">
               {activeStatus.caption && <p className="text-center text-white bg-black/40 p-2 rounded-lg max-w-md">{activeStatus.caption}</p>}
               <div className="flex justify-between items-center w-full max-w-md">
@@ -204,7 +151,7 @@ const StatusPage = () => {
                             </DropdownMenuContent>
                         </DropdownMenu>
                     </div>
-                    <UploadStatusDialog onStatusUploaded={() => { setUploadOpen(false); fetchStatuses(); }} />
+                    {isUploadOpen && <UploadStatusDialog onStatusUploaded={() => { setUploadOpen(false); fetchStatuses(); }} />}
                 </Dialog>
 
                 <div>
