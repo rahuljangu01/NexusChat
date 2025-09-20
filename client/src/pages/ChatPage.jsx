@@ -124,28 +124,37 @@ const ForwardDialog = ({ connections, onForward, currentUser }) => {
     );
 };
 
-const MessageItem = ({ item, theirPublicKey }) => {
-    const [decryptedContent, setDecryptedContent] = useState(
-        item.messageType === 'encrypted_text' ? '🔒 Decrypting...' : item.content
-    );
+const MessageItem = ({ item, isSender, theirPublicKey }) => {
+    const [decryptedContent, setDecryptedContent] = useState(() => {
+        if (isSender && item.messageType === 'encrypted_text') return item.content;
+        if (item.messageType === 'encrypted_text') return '🔒 Decrypting...';
+        return item.content;
+    });
 
     useEffect(() => {
         let isMounted = true;
         const decrypt = async () => {
-            if (item.messageType === 'encrypted_text' && item.content && theirPublicKey && item.sender?._id) {
+            if (!isSender && item.messageType === 'encrypted_text' && item.content && theirPublicKey) {
                 try {
                     const plaintext = encryptionService.decrypt(item.content, theirPublicKey);
                     if (isMounted) setDecryptedContent(plaintext);
                 } catch (e) {
+                    console.error("Decryption failed for message:", item._id, e);
                     if (isMounted) setDecryptedContent("🔒 Could not decrypt message.");
                 }
-            } else {
+            } else if (isSender && item.messageType === 'text') {
                 if (isMounted) setDecryptedContent(item.content);
             }
         };
-        decrypt();
+
+        if (item.messageType === 'encrypted_text') {
+            decrypt();
+        } else {
+            setDecryptedContent(item.content);
+        }
+
         return () => { isMounted = false; };
-    }, [item.content, item.messageType, theirPublicKey, item.sender?._id]);
+    }, [item.content, item.messageType, theirPublicKey, isSender, item._id]); // <<< YEH HAI FINAL FIX
 
     if (item.messageType === 'image' || item.messageType === 'file') {
         return ( <a href={item.content} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-3 text-white hover:underline"><Paperclip className="h-8 w-8 flex-shrink-0 text-slate-400" /><span>{item.fileName || 'View Attachment'}</span></a> );
@@ -227,7 +236,7 @@ const ChatPage = () => {
             const encryptedContent = await encryptionService.encrypt(messageToSend, theirPublicKey);
             
             const tempId = Date.now().toString();
-            const optimisticMessage = { _id: tempId, sender: { _id: currentUser.id, name: currentUser.name }, receiver: { _id: userId }, content: messageToSend, messageType: 'text', createdAt: new Date().toISOString(), status: 'sent', _type: 'message' };
+            const optimisticMessage = { _id: tempId, sender: { _id: currentUser.id }, receiver: { _id: userId }, content: messageToSend, messageType: 'text', createdAt: new Date().toISOString(), status: 'sent', _type: 'message' };
             dispatch(addMessage({ chatId: userId, message: optimisticMessage }));
 
             const response = await new Promise((resolve, reject) => {
@@ -546,14 +555,14 @@ const ChatPage = () => {
                                 }
                                 const isSender = item.sender?._id === currentUser.id;
                                 const isSelected = selectedMessages.has(item._id);
-                                const theirKeyForDecryption = isSender ? theirPublicKey : (encryptionService.keyPair ? encryptionService.fromBase64(encryptionService.keyPair.publicKey) : null);
+                                const keyForDecryption = isSender ? null : theirPublicKey;
                                 return (
                                     <div key={item._id || index} onContextMenu={(e) => { e.preventDefault(); handleMessageLongPress(item._id); }}>
                                         {showDateHeader && (<div className="text-center text-xs text-slate-500 my-4 bg-slate-800/50 self-center px-3 py-1 rounded-full">{format(new Date(item.createdAt), 'MMMM d, yyyy')}</div>)}
                                         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} onClick={() => handleMessageClick(item._id)} className={`flex items-end gap-1.5 my-0.5 rounded-lg transition-colors duration-200 ${isSender ? "justify-end" : "justify-start"} ${isSelected ? 'bg-indigo-500/20' : ''}`}>
                                             {!isSender && <Avatar className="h-6 w-6 self-end"><AvatarImage src={chatUser?.profilePhotoUrl}/><AvatarFallback className="text-xs">{chatUser?.name?.charAt(0)}</AvatarFallback></Avatar>}
                                             <div className={`message-bubble max-w-[70%] md:max-w-[60%] rounded-xl ${isSender ? "bg-indigo-600 sent" : "bg-[#2a2a36] received"}`}>
-                                                <MessageItem item={item} theirPublicKey={theirKeyForDecryption} />
+                                                <MessageItem item={item} isSender={isSender} theirPublicKey={keyForDecryption} />
                                                 <span className="text-[10px] opacity-70 float-right mr-2 mb-1 self-end text-white/70 flex items-center">{formatTime(item.createdAt)}{isSender && item._type === 'message' && <MessageStatus status={item.status} />}</span>
                                             </div>
                                         </motion.div>

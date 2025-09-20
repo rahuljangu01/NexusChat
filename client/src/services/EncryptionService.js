@@ -1,5 +1,5 @@
 import nacl from 'tweetnacl';
-import { encodeUTF8, decodeUTF8 } from 'tweetnacl-util';
+import { decodeUTF8, encodeUTF8 } from 'tweetnacl-util';
 import { storePublicKey, getPublicKey } from '../utils/api';
 
 const KEY_PAIR_STORAGE_KEY = 'nexus-e2ee-keypair';
@@ -34,7 +34,6 @@ class EncryptionService {
             };
             localStorage.setItem(KEY_PAIR_STORAGE_KEY, JSON.stringify(this.keyPair));
             
-            // Nayi public key ko server par store karo
             try {
                 console.log("Attempting to store Public Key on server:", this.keyPair.publicKey);
                 await storePublicKey({ publicKey: this.keyPair.publicKey });
@@ -80,6 +79,10 @@ class EncryptionService {
     // Message ko decrypt karna
     decrypt(encryptedMessage, theirPublicKey) {
         const secretKey = fromBase64(this.keyPair.secretKey);
+        
+        if (typeof encryptedMessage !== 'string' || encryptedMessage.length === 0) {
+            throw new Error("Invalid encrypted message format.");
+        }
         const messageWithNonce = fromBase64(encryptedMessage);
 
         const nonce = messageWithNonce.slice(0, nacl.box.nonceLength);
@@ -88,14 +91,12 @@ class EncryptionService {
         const decryptedBytes = nacl.box.open(box, nonce, theirPublicKey, secretKey);
         
         if (!decryptedBytes) {
-            throw new Error("Decryption failed. Message may have been tampered with.");
+            throw new Error("Decryption failed. This might be because of a key mismatch or tampered message.");
         }
 
         return encodeUTF8(decryptedBytes);
     }
 
-    // Helpers ko service ka part bana do taaki consistent rahein
-    toBase64 = (bytes) => toBase64(bytes);
     fromBase64 = (base64) => fromBase64(base64);
 }
 
