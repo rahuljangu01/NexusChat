@@ -62,6 +62,11 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+
+    publicKey: {
+      type: String, // Public key ko Base64 string ke roop mein save karenge
+      default: "",
+    },
     // <<< --- YEH NAYE FIELDS ADD KIYE GAYE HAIN --- >>>
     passwordResetToken: String,
     passwordResetExpires: Date,

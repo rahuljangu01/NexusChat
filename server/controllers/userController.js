@@ -85,7 +85,50 @@ const getUserProfile = async (req, res) => {
   }
 };
 
+const storePublicKey = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { publicKey } = req.body;
+
+    if (!publicKey) {
+      return res.status(400).json({ message: "Public key is required." });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    user.publicKey = publicKey;
+    await user.save();
+
+    res.status(200).json({ success: true, message: "Public key stored successfully." });
+  } catch (error) {
+    console.error("Error storing public key:", error);
+    res.status(500).json({ message: "Server error while storing public key." });
+  }
+};
+
+// Function #2: Kisi doosre user ki public key fetch karna
+const getPublicKey = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const user = await User.findById(userId).select('publicKey');
+
+    if (!user || !user.publicKey) {
+      return res.status(404).json({ message: "Public key not found for this user." });
+    }
+
+    res.status(200).json({ success: true, publicKey: user.publicKey });
+  } catch (error) {
+    console.error("Error fetching public key:", error);
+    res.status(500).json({ message: "Server error while fetching public key." });
+  }
+};
+
 module.exports = {
   searchUsers,
   getUserProfile,
+   storePublicKey,
+  getPublicKey,
 };
