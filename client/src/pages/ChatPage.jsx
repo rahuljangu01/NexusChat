@@ -1,5 +1,3 @@
-// client/src/pages/ChatPage.jsx (FINAL - FULL CODE)
-
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
@@ -8,11 +6,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { format, isSameDay } from 'date-fns';
 import Peer from 'simple-peer';
 import EmojiPicker from 'emoji-picker-react';
-
 import CallingUI from "../components/CallingUI";
 import InfoPanel from "../components/InfoPanel";
 import { socketService } from "../services/socketService";
-import "./ChatPage.css"; 
+import "./ChatPage.css";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
@@ -21,6 +18,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { getMessages, addMessage, updateMessage } from "../store/slices/chatSlice";
 import { setChatWallpaper, fetchConnections } from "../store/slices/connectionsSlice";
 import { uploadProfilePhoto, removeConnection, logCall, togglePinMessage, deleteMultipleMessages, forwardMessage, updateWallpaper } from "../utils/api";
+
+const peerOptions = {
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+    ],
+  },
+};
 
 const wallpapers = [
     { name: 'Default', url: '' },
@@ -251,8 +257,14 @@ const ChatPage = () => {
         setCallerSignal(null);
         setCallDuration(0);
         clearInterval(durationIntervalRef.current);
-        if (stream) { stream.getTracks().forEach(track => track.stop()); setStream(null); }
-        if (connectionRef.current) { connectionRef.current.destroy(); connectionRef.current = null; }
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+            setStream(null);
+        }
+        if (connectionRef.current) {
+            connectionRef.current.destroy();
+            connectionRef.current = null;
+        }
         const otherUserId = callState === 'calling' ? userId : caller.id;
         if (otherUserId) {
             socketService.emit('hang-up', { to: otherUserId });
@@ -260,19 +272,15 @@ const ChatPage = () => {
     }, [callState, userId, caller.id, stream, callDuration, dispatch]);
   
     const callUser = (type) => {
-        console.log(`[Call] Attempting to start a ${type} call to user:`, userId);
         const constraints = { video: type === 'video', audio: true };
-
         navigator.mediaDevices.getUserMedia(constraints).then(stream => {
-            console.log("[Call] Media stream acquired successfully!");
             setStream(stream);
             if(myVideo.current) myVideo.current.srcObject = stream;
 
             setCallState('calling');
             setCallType(type);
 
-            const peer = new Peer({ initiator: true, trickle: false, stream, ...peerOptions });
-
+            const peer = new Peer({ initiator: true, stream, ...peerOptions });
 
             peer.on('signal', data => {
                 const payload = { 
@@ -281,7 +289,6 @@ const ChatPage = () => {
                     from: { id: currentUser.id, name: currentUser.name, profilePhotoUrl: currentUser.profilePhotoUrl }, 
                     type 
                 };
-                console.log("[Call] Peer signal generated. Emitting 'call-user' with payload:", payload);
                 socketService.emit('call-user', payload);
             });
 
@@ -290,7 +297,6 @@ const ChatPage = () => {
             });
 
             socketService.on('call-accepted', signal => {
-                console.log("[Call] Call was accepted. Signaling peer.");
                 setCallState('active');
                 durationIntervalRef.current = setInterval(() => setCallDuration(prev => prev + 1), 1000);
                 peer.signal(signal);
@@ -299,21 +305,10 @@ const ChatPage = () => {
             connectionRef.current = peer;
 
         }).catch(err => {
-            // YEH SABSE ZAROORI HAI
-            console.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
             console.error("[Call] getUserMedia FAILED! Error:", err.name, err.message);
-            console.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
             alert(`Could not start call. Error: ${err.name}. Please check camera/mic permissions in your browser.`);
         });
     };
-const peerOptions = {
-  config: {
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-    ],
-  },
-};
 
     const answerCall = () => {
         const constraints = { video: callType === 'video', audio: true };
@@ -322,14 +317,31 @@ const peerOptions = {
             if (myVideo.current) myVideo.current.srcObject = stream;
             setCallState('active');
             durationIntervalRef.current = setInterval(() => setCallDuration(prev => prev + 1), 1000);
-            const peer = new Peer({ initiator: false, trickle: false, stream, ...peerOptions });
+            
+            const peer = new Peer({ initiator: false, stream, ...peerOptions });
+            
             peer.on('signal', data => { socketService.emit('answer-call', { signal: data, to: caller.id }); });
             peer.on('stream', remoteStream => { if(userVideo.current) userVideo.current.srcObject = remoteStream; });
+            
             peer.signal(callerSignal);
             connectionRef.current = peer;
         }).catch(err => console.error("getUserMedia error:", err));
     };
     
+    const toggleMute = () => {
+        if (stream) {
+            stream.getAudioTracks()[0].enabled = !isMuted;
+            setIsMuted(!isMuted);
+        }
+    };
+
+    const toggleVideo = () => {
+        if (stream && callType === 'video') {
+            stream.getVideoTracks()[0].enabled = !isVideoOff;
+            setIsVideoOff(!isVideoOff);
+        }
+    };
+
     const handleTyping = () => {
         socketService.emit("typing", { receiverId: userId });
         if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -346,11 +358,13 @@ const peerOptions = {
             const handleCallEnded = () => leaveCall(false);
             const handleUserTyping = ({ userId: typingUserId }) => { if (typingUserId === userId) setIsTyping(true); };
             const handleUserStopTyping = ({ userId: stopTypingUserId }) => { if (stopTypingUserId === userId) setIsTyping(false); };
+            
             socketService.joinChat(userId);
             socketService.on("call-made", handleCallMade);
             socketService.on("call-ended", handleCallEnded);
             socketService.onUserTyping(handleUserTyping);
             socketService.onUserStopTyping(handleUserStopTyping);
+            
             return () => {
                 socketService.leaveChat(userId);
                 socketService.off("call-made", handleCallMade);
@@ -476,7 +490,24 @@ const peerOptions = {
         > 
             <WallpaperDialog open={isWallpaperDialogOpen} onOpenChange={setIsWallpaperDialogOpen} connectionId={chatUserConnection?._id} currentWallpaper={currentWallpaper} onWallpaperChange={(url) => dispatch(setChatWallpaper({ connectionId: chatUserConnection._id, wallpaperUrl: url }))}/>
             <Dialog open={isForwarding} onOpenChange={setIsForwarding}><ForwardDialog connections={connections} currentUser={currentUser} onForward={handleForwardSelected} /></Dialog>
-            <AnimatePresence>{callState !== 'idle' && ( <CallingUI callState={callState} callType={callType} user={callState === 'incoming' ? caller : chatUser} myVideo={myVideo} userVideo={userVideo} isMuted={isMuted} isVideoOff={isVideoOff} callDuration={callDuration} leaveCall={leaveCall} answerCall={answerCall} toggleMute={() => setIsMuted(!isMuted)} toggleVideo={() => {if(stream && callType === 'video'){stream.getVideoTracks()[0].enabled = !isVideoOff; setIsVideoOff(!isVideoOff);}}}/> )}</AnimatePresence>
+            <AnimatePresence>
+                {callState !== 'idle' && ( 
+                    <CallingUI 
+                        callState={callState} 
+                        callType={callType} 
+                        user={callState === 'incoming' ? caller : chatUser} 
+                        myVideo={myVideo} 
+                        userVideo={userVideo} 
+                        isMuted={isMuted} 
+                        isVideoOff={isVideoOff} 
+                        callDuration={callDuration} 
+                        leaveCall={leaveCall} 
+                        answerCall={answerCall} 
+                        toggleMute={toggleMute}
+                        toggleVideo={toggleVideo}
+                    /> 
+                )}
+            </AnimatePresence>
             <div className={`flex-1 flex flex-col overflow-hidden ${callState !== 'idle' ? 'blur-sm pointer-events-none' : ''}`}>
                 <header className="flex items-center px-2 py-1 h-14 border-b border-slate-800 flex-shrink-0 bg-slate-900/70 backdrop-blur-lg z-20">
                     {selectionMode ? (<div className="flex items-center justify-between w-full"><Button variant="ghost" size="icon" onClick={clearSelection}><CloseIcon className="h-5 w-5" /></Button><span className="font-semibold text-lg">{selectedMessages.size} selected</span><div className="flex items-center gap-1"><Button variant="ghost" size="icon" onClick={handleDeleteSelected}><Trash2 className="h-5 w-5" /></Button>{selectedMessages.size === 1 && <Button variant="ghost" size="icon" onClick={handlePinSelected}><Pin className="h-5 w-5" /></Button>}<Button variant="ghost" size="icon" onClick={() => setIsForwarding(true)}><Forward className="h-5 w-5" /></Button></div></div>) : (<><Button variant="ghost" size="icon" className="h-9 w-9 text-gray-400 md:hidden" onClick={() => navigate('/dashboard')}><ArrowLeft className="h-5 w-5"/></Button><div className="flex items-center gap-2 cursor-pointer flex-1 overflow-hidden" onClick={() => setInfoPanelOpen(true)}><Avatar className="h-9 w-9"><AvatarImage src={chatUser.profilePhotoUrl}/><AvatarFallback className="text-sm">{chatUser.name.charAt(0)}</AvatarFallback></Avatar><div className="flex-1 overflow-hidden"><h2 className="font-bold text-sm text-white truncate">{chatUser.name}</h2><p className="text-xs text-indigo-400 h-4">{isTyping ? 'typing...' : (chatUser.isOnline ? 'Online' : 'Offline')}</p></div></div><div className="ml-auto flex items-center"><Button variant="ghost" size="icon" onClick={() => callUser('video')} className="h-9 w-9 text-gray-400"><Video className="h-4 w-4"/></Button><Button variant="ghost" size="icon" onClick={() => callUser('audio')} className="h-9 w-9 text-gray-400"><Phone className="h-4 w-4"/></Button><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-9 w-9 text-gray-400"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger><DropdownMenuContent className="bg-slate-800 border-slate-700 text-white"><DropdownMenuItem onClick={() => setInfoPanelOpen(true)}>View Info</DropdownMenuItem><DropdownMenuItem onClick={() => setIsWallpaperDialogOpen(true)}><Wallpaper className="mr-2 h-4 w-4" /><span>Change Wallpaper</span></DropdownMenuItem><DropdownMenuSeparator className="bg-slate-700"/><DropdownMenuItem className="text-red-500" onClick={handleRemoveConnection}><UserX className="mr-2 h-4 w-4"/>Remove Connection</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div></>)}

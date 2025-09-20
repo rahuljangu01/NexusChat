@@ -101,7 +101,7 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 // 4. Rate Limiting to prevent API abuse
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200,
+  max: 2000,
   standardHeaders: true,
   legacyHeaders: false,
   message: "Too many requests from this IP, please try again after 15 minutes.",
