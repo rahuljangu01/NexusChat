@@ -1,4 +1,4 @@
-// server/server.js (FINAL - SIMPLIFIED CORS)
+// server/server.js (FINAL - WITH CRASH & CORS FIX)
 
 // =================================================================
 // IMPORTS
@@ -38,20 +38,33 @@ const server = http.createServer(app);
 
 connectDB();
 
-// <<< --- THIS IS THE NEW, SIMPLIFIED CORS LOGIC --- >>>
-// For production, it uses the CLIENT_URL from Render.
-// For local development, it defaults to allowing http://localhost:3001
-const appOrigin = process.env.CLIENT_URL || "http://localhost:3001";
-console.log(`[CORS CONFIG] Server will allow requests from: ${appOrigin}`);
+
+// <<< --- YEH NAYA, SMART CORS LOGIC HAI --- >>>
+const allowedOriginsString = process.env.CLIENT_URL || "http://localhost:3000";
+const allowedOrigins = allowedOriginsString.split(',').map(origin => origin.trim());
+
+console.log(`[CORS CONFIG] Server will allow requests from:`, allowedOrigins);
 
 const corsOptions = {
-    origin: appOrigin,
+    origin: (origin, callback) => {
+        // Allow requests with no origin (like mobile apps or curl requests) in non-production environments
+        if (!origin && process.env.NODE_ENV !== 'production') {
+            return callback(null, true);
+        }
+        if (allowedOrigins.indexOf(origin) !== -1) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     credentials: true,
 };
 
 const io = socketIo(server, {
   cors: corsOptions,
 });
+// <<< --- NAYA LOGIC YAHAN KHATAM HOTA HAI --- >>>
+
 
 // Make `io` instance accessible to our controllers
 app.set('io', io);
@@ -68,12 +81,24 @@ app.use((req, res, next) => {
 // CORE MIDDLEWARE
 // =================================================================
 
-// 1. CORS Configuration - Use the simple options defined above
+// 1. CORS Configuration
 app.use(cors(corsOptions));
 
 // 2. Security Headers with Helmet
-app.use(helmet());
-app.use(helmet.crossOriginResourcePolicy({ policy: "cross-origin" }));
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        "img-src": ["'self'", "data:", "https://res.cloudinary.com"],
+        // Hum yahan allowedOrigins list se WebSocket sources generate karenge
+        "connect-src": ["'self'", ...allowedOrigins.map(origin => `wss://${new URL(origin).hostname}`)],
+      },
+    },
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" }
+  })
+);
 
 // 3. Body Parsers for JSON and URL-encoded data
 app.use(express.json({ limit: "10mb" }));
@@ -125,8 +150,8 @@ app.use("/api/*", (req, res) => {
 
 app.use((err, req, res, next) => {
   console.error("Global Error Handler:", err.stack);
-  res.status(err.status || 500).json({ 
-    message: err.message || "An unexpected error occurred on the server." 
+  res.status(err.status || 500).json({
+    message: err.message || "An unexpected error occurred on the server."
   });
 });
 
