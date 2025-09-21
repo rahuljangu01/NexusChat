@@ -1,5 +1,3 @@
-// server/controllers/messageController.js (FINAL & CORRECTED)
-
 const Message = require("../models/Message");
 const CallRecord = require("../models/CallRecord");
 const Connection = require("../models/Connection");
@@ -264,4 +262,28 @@ exports.toggleReaction = async (req, res) => {
         console.error("Toggle reaction error:", error);
         res.status(500).json({ message: "Server error." });
     }
+};
+
+// Get all media (images and files) shared between two users
+exports.getSharedMedia = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const currentUserId = req.user.id;
+
+    const mediaMessages = await Message.find({
+      $or: [
+        { sender: currentUserId, receiver: userId },
+        { sender: userId, receiver: currentUserId },
+      ],
+      messageType: { $in: ["image", "file"] },
+    })
+      .sort({ createdAt: -1 })
+      .select("content messageType fileName createdAt")
+      .lean();
+
+    res.json({ success: true, media: mediaMessages });
+  } catch (error) {
+    console.error(`Error in getSharedMedia for user ${req.user.id}:`, error);
+    res.status(500).json({ message: "Server error while fetching shared media." });
+  }
 };

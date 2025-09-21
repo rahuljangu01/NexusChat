@@ -1,13 +1,13 @@
-// server/routes/messages.js (FULL & COMPLETE CODE)
+// server/routes/messages.js (CORRECTED IMPORT)
 
 const express = require("express");
 const { 
     sendMessage, getMessages, markAsRead, editMessage, deleteMessage,
-    togglePinMessage, forwardMessage, deleteMultipleMessages
+    togglePinMessage, forwardMessage, deleteMultipleMessages,
+    toggleReaction, // toggleReaction ko bhi import karo
+    getSharedMedia // <<< --- YEH IMPORT ADD KARO --- >>>
 } = require("../controllers/messageController");
 const { protect } = require("../middleware/auth");
-
-const { toggleReaction } = require("../controllers/messageController");
 
 const router = express.Router();
 
@@ -22,5 +22,8 @@ router.post("/forward", protect, forwardMessage);
 router.post("/delete-multiple", protect, deleteMultipleMessages);
 
 router.post("/react/:messageId", protect, toggleReaction);
+
+// Yeh route ab sahi se kaam karega
+router.get("/:userId/media", protect, getSharedMedia);
 
 module.exports = router;

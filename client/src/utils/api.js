@@ -206,6 +206,9 @@ export const resetPassword = async (token, password) => {
   const { data } = await api.post(`/auth/reset-password/${token}`, { password });
   return data;
 };
-
+export const getSharedMedia = async (userId) => {
+  const { data } = await api.get(`/messages/${userId}/media`);
+  return data.media;
+};
 
 export default api;

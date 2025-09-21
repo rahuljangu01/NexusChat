@@ -1,11 +1,34 @@
-// client/src/components/InfoPanel.jsx (YEH NAYI FILE BANANI HAI)
+// client/src/components/InfoPanel.jsx (CLEANED)
 
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { X, UserX, Mail, Briefcase, GraduationCap } from "lucide-react";
+// ImageIcon ko neeche waali line se hata do
+import { X, UserX, Mail, Briefcase, GraduationCap, FileText, Download } from "lucide-react";
 import { Button } from "./ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
+import { getSharedMedia } from "../utils/api";
 
 const InfoPanel = ({ user, isOpen, onClose, onRemoveConnection }) => {
+  const [sharedMedia, setSharedMedia] = useState([]);
+  const [loadingMedia, setLoadingMedia] = useState(true);
+
+  useEffect(() => {
+    if (isOpen && user?._id) {
+      const fetchMedia = async () => {
+        try {
+          setLoadingMedia(true);
+          const media = await getSharedMedia(user._id);
+          setSharedMedia(media);
+        } catch (error) {
+          console.error("Failed to fetch shared media", error);
+        } finally {
+          setLoadingMedia(false);
+        }
+      };
+      fetchMedia();
+    }
+  }, [isOpen, user?._id]);
+
   if (!isOpen) return null;
 
   return (
@@ -49,6 +72,34 @@ const InfoPanel = ({ user, isOpen, onClose, onRemoveConnection }) => {
             <span className="text-slate-300">{user.department}</span>
           </div>
         </div>
+        
+        <div className="border-t border-slate-800 my-6"></div>
+        <h4 className="text-sm uppercase font-semibold text-slate-500 mb-3">Shared Media</h4>
+        {loadingMedia ? (
+            <div className="flex justify-center items-center h-24">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-400"></div>
+            </div>
+        ) : sharedMedia.length > 0 ? (
+            <div className="grid grid-cols-3 gap-2">
+                {sharedMedia.slice(0, 6).map((media, index) => (
+                    <a key={index} href={media.content} target="_blank" rel="noopener noreferrer" className="relative aspect-square bg-slate-800 rounded-md overflow-hidden group">
+                        {media.messageType === 'image' ? (
+                            <img src={media.content} alt="Shared" className="w-full h-full object-cover"/>
+                        ) : (
+                            <div className="w-full h-full flex flex-col items-center justify-center text-center p-2">
+                                <FileText className="h-8 w-8 text-slate-400"/>
+                                <p className="text-xs text-slate-500 mt-1 truncate">{media.fileName}</p>
+                            </div>
+                        )}
+                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <Download className="h-6 w-6 text-white"/>
+                        </div>
+                    </a>
+                ))}
+            </div>
+        ) : (
+            <p className="text-sm text-slate-500 text-center">No media shared yet.</p>
+        )}
         
         <div className="border-t border-slate-800 my-6"></div>
         
