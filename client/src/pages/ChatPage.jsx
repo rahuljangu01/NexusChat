@@ -1,5 +1,3 @@
-// client/src/pages/ChatPage.jsx (FINAL STABLE VERSION - NO E2EE)
-
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
@@ -532,8 +530,22 @@ const ChatPage = () => {
                                         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} onClick={() => handleMessageClick(item._id)} className={`flex items-end gap-1.5 my-0.5 rounded-lg transition-colors duration-200 ${isSender ? "justify-end" : "justify-start"} ${isSelected ? 'bg-indigo-500/20' : ''}`}>
                                             {!isSender && <Avatar className="h-6 w-6 self-end"><AvatarImage src={chatUser?.profilePhotoUrl}/><AvatarFallback className="text-xs">{chatUser?.name?.charAt(0)}</AvatarFallback></Avatar>}
                                             <div className={`message-bubble max-w-[70%] md:max-w-[60%] rounded-xl ${isSender ? "bg-indigo-600 sent" : "bg-[#2a2a36] received"}`}>
-                                                <p className="px-2.5 py-1.5 text-sm break-words text-white">{item.content}</p>
-                                                <span className="text-[10px] opacity-70 float-right mr-2 mb-1 self-end text-white/70 flex items-center">{formatTime(item.createdAt)}{isSender && item._type === 'message' && <MessageStatus status={item.status} />}</span>
+                                                {item.messageType === 'image' ? (
+                                                    <a href={item.content} target="_blank" rel="noopener noreferrer" className="block p-1">
+                                                        <img src={item.content} alt="Sent" className="max-w-xs h-auto rounded-lg" />
+                                                    </a>
+                                                ) : item.messageType === 'file' ? (
+                                                    <a href={item.content} target="_blank" rel="noopener noreferrer" download={item.fileName || 'file'} className="flex items-center gap-3 p-3 text-white hover:underline bg-slate-700/50 rounded-lg">
+                                                        <Paperclip className="h-8 w-8 flex-shrink-0 text-slate-400" />
+                                                        <div className="overflow-hidden">
+                                                            <p className="font-semibold truncate">{item.fileName || 'Attached File'}</p>
+                                                            <p className="text-xs text-slate-300">{item.fileSize ? `${(item.fileSize / 1024).toFixed(2)} KB` : ''}</p>
+                                                        </div>
+                                                    </a>
+                                                ) : (
+                                                    <p className="px-2.5 py-1.5 text-sm break-words text-white">{item.content}</p>
+                                                )}
+                                                <span className="text-[10px] opacity-70 float-right mr-2 mb-1 self-end text-white/70 flex items-center">{formatTime(item.createdAt)}{isSender && <MessageStatus status={item.status} />}</span>
                                             </div>
                                         </motion.div>
                                     </div>
