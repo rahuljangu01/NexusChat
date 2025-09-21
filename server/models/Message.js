@@ -24,7 +24,7 @@ const messageSchema = new mongoose.Schema(
     },
    messageType: {
       type: String,
-      enum: ["text", "image", "file", "audio", "sticker", "encrypted_text"], // <<< YEH ADD KIYA GAYA HAI
+      enum: ["text", "image", "file", "audio", "sticker"], // <<< YEH ADD KIYA GAYA HAI
       default: "text",
     },
     status: {

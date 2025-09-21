@@ -207,14 +207,5 @@ export const resetPassword = async (token, password) => {
   return data;
 };
 
-export const storePublicKey = async (publicKey) => {
-  const { data } = await api.post('/users/public-key', { publicKey });
-  return data;
-};
-
-export const getPublicKey = async (userId) => {
-  const { data } = await api.get(`/users/${userId}/public-key`);
-  return data;
-};
 
 export default api;

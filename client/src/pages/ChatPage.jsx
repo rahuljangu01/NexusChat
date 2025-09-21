@@ -1,9 +1,9 @@
-// client/src/pages/ChatPage.jsx (FINAL & COMPLETE)
+// client/src/pages/ChatPage.jsx (FINAL STABLE VERSION - NO E2EE)
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
-import { ArrowLeft, Send, Paperclip, MoreVertical, Video, Phone, UserX, Smile, PhoneIncoming, PhoneOutgoing, PhoneMissed, Check, CheckCheck, Pin, Trash2, Forward, X as CloseIcon, Search, Wallpaper, ImagePlus, Lock } from "lucide-react";
+import { ArrowLeft, Send, Paperclip, MoreVertical, Video, Phone, UserX, Smile, PhoneIncoming, PhoneOutgoing, PhoneMissed, Check, CheckCheck, Pin, Trash2, Forward, X as CloseIcon, Search, Wallpaper, ImagePlus } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { format, isSameDay } from 'date-fns';
 import Peer from 'simple-peer';
@@ -11,7 +11,6 @@ import EmojiPicker from 'emoji-picker-react';
 import CallingUI from "../components/CallingUI";
 import InfoPanel from "../components/InfoPanel";
 import { socketService } from "../services/socketService";
-import { encryptionService } from "../services/EncryptionService";
 import "./ChatPage.css";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -112,50 +111,6 @@ const ForwardDialog = ({ connections, onForward, currentUser }) => {
     );
 };
 
-const MessageItem = ({ item, isSender, theirPublicKey, myPublicKey }) => {
-    const [decryptedContent, setDecryptedContent] = useState(() => {
-        if (item.messageType === 'text') return item.content;
-        if (item.messageType === 'encrypted_text') return '...';
-        return item.content;
-    });
-
-    useEffect(() => {
-        let isMounted = true;
-        const decrypt = () => {
-            if (item.messageType === 'encrypted_text' && item.content) {
-                const senderPublicKey = isSender ? myPublicKey : theirPublicKey;
-                if (!senderPublicKey) {
-                    if (isMounted) setDecryptedContent("🔒 Key not available.");
-                    return;
-                }
-                try {
-                    const plaintext = encryptionService.decrypt(item.content, senderPublicKey);
-                    if (isMounted) setDecryptedContent(plaintext);
-                } catch (e) {
-                    if (isMounted) setDecryptedContent("🔒 Could not decrypt message.");
-                }
-            }
-        };
-
-        if (item.messageType === 'encrypted_text') {
-            decrypt();
-        } else {
-            setDecryptedContent(item.content);
-        }
-
-        return () => { isMounted = false; };
-    }, [item.content, item.messageType, theirPublicKey, myPublicKey, isSender, item._id]);
-
-    const contentToShow = isSender && item.messageType === 'text'
-        ? item.content // Sent optimistic messages show plain text
-        : item.messageType === 'encrypted_text'
-        ? `🔒 ${decryptedContent}`
-        : decryptedContent;
-
-    return <p className="px-2.5 py-1.5 text-sm break-words text-white">{contentToShow}</p>;
-};
-
-
 const ChatPage = () => {
     const { userId } = useParams();
     const navigate = useNavigate();
@@ -167,11 +122,10 @@ const ChatPage = () => {
     const chatUserConnection = connections.find(c => c.users.some(u => u._id === userId));
     const chatUser = chatUserConnection?.users.find(u => u._id === userId);
 
-    const [message, setMessage] = useState("");
-    const [theirPublicKey, setTheirPublicKey] = useState(null);
-    const [myPublicKey, setMyPublicKey] = useState(null);
     const [isTyping, setIsTyping] = useState(false);
+    const [message, setMessage] = useState("");
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
     const [isInfoPanelOpen, setInfoPanelOpen] = useState(false);
     const [isWallpaperDialogOpen, setIsWallpaperDialogOpen] = useState(false);
     const [selectionMode, setSelectionMode] = useState(false);
@@ -198,56 +152,6 @@ const ChatPage = () => {
 
     const currentWallpaper = chatUserConnection?.chatWallpaper || '';
 
-    useEffect(() => {
-        const init = async () => {
-            if (currentUser && userId) {
-                await encryptionService.initialize();
-                if (encryptionService.keyPair && encryptionService.keyPair.publicKey) {
-                    setMyPublicKey(encryptionService.fromBase64(encryptionService.keyPair.publicKey));
-                }
-                try {
-                    const key = await encryptionService.getTheirPublicKey(userId);
-                    setTheirPublicKey(key);
-                } catch (error) {
-                    setTheirPublicKey(null);
-                }
-            }
-        };
-        init();
-    }, [currentUser, userId]);
-
-    const handleSendMessage = async (e) => {
-        e.preventDefault();
-        if (!message.trim() || !currentUser) return;
-        if (!theirPublicKey) {
-            alert("Cannot send message. Recipient's encryption key is not available. They may need to log in once.");
-            return;
-        }
-        
-        const messageToSend = message.trim();
-        setMessage("");
-        setShowEmojiPicker(false);
-
-        try {
-            const encryptedContent = await encryptionService.encrypt(messageToSend, theirPublicKey);
-            
-            const tempId = Date.now().toString();
-            const optimisticMessage = { _id: tempId, sender: { _id: currentUser.id }, content: messageToSend, messageType: 'text', createdAt: new Date().toISOString(), status: 'sent', _type: 'message' };
-            dispatch(addMessage({ chatId: userId, message: optimisticMessage }));
-
-            socketService.emit('send-message', { receiverId: userId, content: encryptedContent, messageType: 'encrypted_text', tempId: tempId }, (ack) => {
-                if (ack.error) {
-                    console.error("Server error sending message:", ack.error);
-                } else if (ack.message) {
-                    dispatch(updateMessage({ chatId: userId, tempId: tempId, finalMessage: ack.message }));
-                }
-            });
-        } catch (error) {
-            console.error("Failed to encrypt and send message:", error);
-            alert("Could not send encrypted message.");
-        }
-    };
-    
     const leaveCall = useCallback(async (logIt = true) => {
         if (logIt && callState !== 'idle') {
             let status = 'rejected';
@@ -472,8 +376,86 @@ const ChatPage = () => {
 
     const handleEmojiClick = (emojiObject) => { setMessage(prev => prev + emojiObject.emoji); };
     
-    const handleFileChange = async () => {
-        alert("Encrypted file sharing is not yet implemented.");
+    const handleSendMessage = async (e) => {
+        e.preventDefault();
+        if (!message.trim() || !currentUser) return;
+
+        const tempId = Date.now().toString();
+        const optimisticMessage = {
+            _id: tempId,
+            sender: { _id: currentUser.id, name: currentUser.name, profilePhotoUrl: currentUser.profilePhotoUrl },
+            receiver: { _id: userId },
+            content: message.trim(),
+            messageType: 'text',
+            createdAt: new Date().toISOString(),
+            status: 'sent',
+            _type: 'message',
+        };
+
+        dispatch(addMessage({ chatId: userId, message: optimisticMessage }));
+        
+        const messageToSend = message.trim();
+        setMessage("");
+        setShowEmojiPicker(false);
+
+        try {
+            const response = await new Promise((resolve, reject) => {
+                socketService.emit('send-message', {
+                    receiverId: userId,
+                    content: messageToSend,
+                    tempId: tempId,
+                }, (ack) => {
+                    if (ack.error) {
+                        reject(new Error(ack.error));
+                    } else {
+                        resolve(ack);
+                    }
+                });
+            });
+
+            if (response.message) {
+                dispatch(updateMessage({ chatId: userId, tempId: tempId, finalMessage: response.message }));
+                dispatch(fetchConnections(currentUser.id));
+            }
+        } catch (error) {
+            console.error("Failed to send message:", error.message);
+        }
+    };
+    
+    const handleFileChange = async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        setIsUploading(true);
+        try {
+            const uploadedFile = await uploadProfilePhoto(file);
+            const tempId = Date.now().toString();
+            
+            const response = await new Promise((resolve, reject) => {
+                socketService.emit('send-message', {
+                    receiverId: userId,
+                    content: uploadedFile.url,
+                    messageType: file.type.startsWith("image") ? 'image' : 'file',
+                    fileName: file.name,
+                    fileSize: file.size,
+                    tempId: tempId
+                }, (ack) => {
+                    if (ack.error) {
+                        reject(new Error(ack.error));
+                    } else {
+                        resolve(ack);
+                    }
+                });
+            });
+            
+            if (response.message) {
+                dispatch(fetchConnections(currentUser.id));
+            }
+        } catch (error) { 
+            alert("Failed to upload and send file.");
+            console.error(error);
+        } finally { 
+            setIsUploading(false); 
+        }
     };
     
     const handleRemoveConnection = async () => {
@@ -531,10 +513,6 @@ const ChatPage = () => {
                 <div className="flex-1 min-h-0 relative">
                     {currentWallpaper ? (<div className="absolute inset-0 w-full h-full bg-cover bg-center z-0" style={{ backgroundImage: `url(${currentWallpaper})` }}><div className="absolute inset-0 w-full h-full bg-black/50"></div></div>) : (<div className="static-pattern-background"></div>)}
                     <div className="relative z-10 h-full overflow-y-auto custom-scrollbar">
-                        <div className="text-center py-2 text-xs text-slate-500 flex items-center justify-center gap-2">
-                            <Lock className="h-3 w-3" />
-                            Messages are end-to-end encrypted.
-                        </div>
                         <div className="p-3 flex flex-col">
                             {activeChatMessages.map((item, index) => {
                                 const showDateHeader = index === 0 || !isSameDay(new Date(activeChatMessages[index - 1].createdAt), new Date(item.createdAt));
@@ -554,7 +532,7 @@ const ChatPage = () => {
                                         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} onClick={() => handleMessageClick(item._id)} className={`flex items-end gap-1.5 my-0.5 rounded-lg transition-colors duration-200 ${isSender ? "justify-end" : "justify-start"} ${isSelected ? 'bg-indigo-500/20' : ''}`}>
                                             {!isSender && <Avatar className="h-6 w-6 self-end"><AvatarImage src={chatUser?.profilePhotoUrl}/><AvatarFallback className="text-xs">{chatUser?.name?.charAt(0)}</AvatarFallback></Avatar>}
                                             <div className={`message-bubble max-w-[70%] md:max-w-[60%] rounded-xl ${isSender ? "bg-indigo-600 sent" : "bg-[#2a2a36] received"}`}>
-                                                <MessageItem item={item} isSender={isSender} theirPublicKey={theirPublicKey} myPublicKey={myPublicKey} />
+                                                <p className="px-2.5 py-1.5 text-sm break-words text-white">{item.content}</p>
                                                 <span className="text-[10px] opacity-70 float-right mr-2 mb-1 self-end text-white/70 flex items-center">{formatTime(item.createdAt)}{isSender && item._type === 'message' && <MessageStatus status={item.status} />}</span>
                                             </div>
                                         </motion.div>
@@ -569,11 +547,11 @@ const ChatPage = () => {
                     <AnimatePresence>{showEmojiPicker && ( <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute bottom-[52px] left-2 z-30"><EmojiPicker onEmojiClick={handleEmojiClick} theme="dark" lazyLoadEmojis={true} /></motion.div>)}</AnimatePresence>
                     <form onSubmit={handleSendMessage} className="flex items-center gap-1.5">
                         <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
-                        <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-gray-400 hover:text-white flex-shrink-0" onClick={() => fileInputRef.current.click()}><Paperclip className="h-4 w-4" /></Button>
+                        <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-gray-400 hover:text-white flex-shrink-0" onClick={() => fileInputRef.current.click()} disabled={isUploading}><Paperclip className="h-4 w-4" /></Button>
                         <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-gray-400 hover:text-white flex-shrink-0" onClick={() => setShowEmojiPicker(!showEmojiPicker)}><Smile className="h-4 w-4" /></Button>
                         <Input value={message} onChange={(e) => { setMessage(e.target.value); handleTyping(); }} placeholder="Message..." className="flex-1 h-9 bg-slate-800 border-slate-700 rounded-full px-4 text-sm" onFocus={() => setShowEmojiPicker(false)} />
-                        <Button type="submit" size="icon" className="h-9 w-9 bg-indigo-600 hover:bg-indigo-500 rounded-full flex-shrink-0" disabled={!message.trim()}>
-                            <Send className="h-4 w-4" />
+                        <Button type="submit" size="icon" className="h-9 w-9 bg-indigo-600 hover:bg-indigo-500 rounded-full flex-shrink-0" disabled={!message.trim() || isUploading}>
+                            {isUploading ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div> : <Send className="h-4 w-4" />}
                         </Button>
                     </form>
                 </footer>

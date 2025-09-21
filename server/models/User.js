@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
-const crypto = require("crypto"); // Yeh line add karni hai
+const crypto = require("crypto");
 
 const userSchema = new mongoose.Schema(
   {
@@ -27,7 +27,7 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: [true, "Password is required"],
       minlength: [6, "Password must be at least 6 characters"],
-      select: false, // Password by default query mein nahi aayega
+      select: false,
     },
     profilePhotoUrl: {
       type: String,
@@ -62,12 +62,6 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-
-    publicKey: {
-      type: String, // Public key ko Base64 string ke roop mein save karenge
-      default: "",
-    },
-    // <<< --- YEH NAYE FIELDS ADD KIYE GAYE HAIN --- >>>
     passwordResetToken: String,
     passwordResetExpires: Date,
   },
@@ -96,25 +90,18 @@ userSchema.methods.comparePassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };
 
-
-// <<< --- YEH NAYA METHOD ADD KIYA GAYA HAI --- >>>
 // Generate and hash password reset token
 userSchema.methods.createPasswordResetToken = function() {
-  // 1. Ek random token generate karo
   const resetToken = crypto.randomBytes(32).toString('hex');
 
-  // 2. Us token ko hash karke database mein save karo (security ke liye)
   this.passwordResetToken = crypto
     .createHash('sha256')
     .update(resetToken)
     .digest('hex');
   
-  // 3. Token ki expiry set karo (10 minute)
   this.passwordResetExpires = Date.now() + 10 * 60 * 1000; 
 
-  // 4. Plain (un-hashed) token ko email mein bhejne ke liye return karo
   return resetToken;
 };
-
 
 module.exports = mongoose.model("User", userSchema);

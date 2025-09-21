@@ -1,5 +1,3 @@
-// server/controllers/userController.js (FINAL & COMPLETE WITH E2EE DEBUG LOGS)
-
 const User = require("../models/User");
 const Connection = require("../models/Connection");
 
@@ -13,15 +11,20 @@ const searchUsers = async (req, res) => {
     }
 
     const query = {
-      _id: { $ne: req.user.id },
+      _id: { $ne: req.user.id }, // Exclude current user
     };
 
+    // Text search
     if (q) {
       query.$text = { $search: q };
     }
+
+    // Filter by department
     if (department) {
       query.department = new RegExp(department, "i");
     }
+
+    // Filter by year
     if (year) {
       query.year = Number.parseInt(year);
     }
@@ -32,6 +35,7 @@ const searchUsers = async (req, res) => {
       .skip((page - 1) * limit)
       .sort({ score: { $meta: "textScore" }, isOnline: -1, lastSeen: -1 });
 
+    // Get connection status for each user
     const usersWithConnectionStatus = await Promise.all(
       users.map(async (user) => {
         const connection = await Connection.findOne({
@@ -67,6 +71,7 @@ const getUserProfile = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
+    // Get connection status
     const connection = await Connection.findOne({
       users: { $all: [req.user.id, user._id] },
     });
@@ -79,65 +84,13 @@ const getUserProfile = async (req, res) => {
         connectionId: connection ? connection._id : null,
       },
     });
-  } catch (error)
-   {
+  } catch (error) {
     console.error("Get user profile error:", error);
     res.status(500).json({ message: "Server error" });
-  }
-};
-
-// Store a user's public key on the server
-const storePublicKey = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { publicKey } = req.body;
-    
-    console.log(`[E2EE] Received request to store public key for user: ${userId}`);
-
-    if (!publicKey) {
-      console.log(`[E2EE] Request failed for user ${userId}: Public key is missing.`);
-      return res.status(400).json({ message: "Public key is required." });
-    }
-
-    const user = await User.findByIdAndUpdate(userId, { publicKey }, { new: true });
-    
-    if (!user) {
-      console.log(`[E2EE] Request failed: User with ID ${userId} not found.`);
-      return res.status(404).json({ message: "User not found." });
-    }
-
-    console.log(`[E2EE] SUCCESS: Stored public key for user ${user.name} (${userId})`);
-    res.status(200).json({ success: true, message: "Public key stored successfully." });
-  } catch (error) {
-    console.error("[E2EE] FATAL: Error storing public key:", error);
-    res.status(500).json({ message: "Server error while storing public key." });
-  }
-};
-
-// Get another user's public key
-const getPublicKey = async (req, res) => {
-  try {
-    const { userId } = req.params;
-    console.log(`[E2EE] Received request to fetch public key for user: ${userId}`);
-
-    const user = await User.findById(userId).select('publicKey name');
-
-    if (!user || !user.publicKey) {
-      console.log(`[E2EE] Request failed: Public key not found for user ${userId}`);
-      return res.status(404).json({ message: "Public key not found for this user." });
-    }
-    
-    console.log(`[E2EE] SUCCESS: Found and sending public key for user ${user.name}`);
-    res.status(200).json({ success: true, publicKey: user.publicKey });
-  } catch (error) {
-    console.error("[E2EE] FATAL: Error fetching public key:", error);
-    res.status(500).json({ message: "Server error while fetching public key." });
   }
 };
 
 module.exports = {
   searchUsers,
   getUserProfile,
-  storePublicKey,
-  getPublicKey,
 };
