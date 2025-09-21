@@ -1,3 +1,5 @@
+// client/src/pages/ChatPage.jsx (FINAL & COMPLETE)
+
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
@@ -113,24 +115,23 @@ const ForwardDialog = ({ connections, onForward, currentUser }) => {
 const MessageItem = ({ item, isSender, theirPublicKey, myPublicKey }) => {
     const [decryptedContent, setDecryptedContent] = useState(() => {
         if (item.messageType === 'text') return item.content;
-        if (item.messageType === 'encrypted_text') return '🔒 Decrypting...';
+        if (item.messageType === 'encrypted_text') return '...';
         return item.content;
     });
 
     useEffect(() => {
         let isMounted = true;
-        const decrypt = async () => {
+        const decrypt = () => {
             if (item.messageType === 'encrypted_text' && item.content) {
                 const senderPublicKey = isSender ? myPublicKey : theirPublicKey;
                 if (!senderPublicKey) {
-                    if (isMounted) setDecryptedContent("🔒 Key not found.");
+                    if (isMounted) setDecryptedContent("🔒 Key not available.");
                     return;
                 }
                 try {
                     const plaintext = encryptionService.decrypt(item.content, senderPublicKey);
                     if (isMounted) setDecryptedContent(plaintext);
                 } catch (e) {
-                    console.error("Decryption failed for message:", item._id, e);
                     if (isMounted) setDecryptedContent("🔒 Could not decrypt message.");
                 }
             }
@@ -145,12 +146,13 @@ const MessageItem = ({ item, isSender, theirPublicKey, myPublicKey }) => {
         return () => { isMounted = false; };
     }, [item.content, item.messageType, theirPublicKey, myPublicKey, isSender, item._id]);
 
-    const contentWithLock = item.messageType === 'encrypted_text' ? `🔒 ${decryptedContent}` : decryptedContent;
+    const contentToShow = isSender && item.messageType === 'text'
+        ? item.content // Sent optimistic messages show plain text
+        : item.messageType === 'encrypted_text'
+        ? `🔒 ${decryptedContent}`
+        : decryptedContent;
 
-    if (item.messageType === 'image' || item.messageType === 'file') {
-        return ( <a href={item.content} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-3 text-white hover:underline"><Paperclip className="h-8 w-8 flex-shrink-0 text-slate-400" /><span>{item.fileName || 'View Attachment'}</span></a> );
-    }
-    return <p className="px-2.5 py-1.5 text-sm break-words text-white">{contentWithLock}</p>;
+    return <p className="px-2.5 py-1.5 text-sm break-words text-white">{contentToShow}</p>;
 };
 
 
@@ -230,7 +232,7 @@ const ChatPage = () => {
             const encryptedContent = await encryptionService.encrypt(messageToSend, theirPublicKey);
             
             const tempId = Date.now().toString();
-            const optimisticMessage = { _id: tempId, sender: { _id: currentUser.id }, receiver: { _id: userId }, content: messageToSend, messageType: 'text', createdAt: new Date().toISOString(), status: 'sent', _type: 'message' };
+            const optimisticMessage = { _id: tempId, sender: { _id: currentUser.id }, content: messageToSend, messageType: 'text', createdAt: new Date().toISOString(), status: 'sent', _type: 'message' };
             dispatch(addMessage({ chatId: userId, message: optimisticMessage }));
 
             socketService.emit('send-message', { receiverId: userId, content: encryptedContent, messageType: 'encrypted_text', tempId: tempId }, (ack) => {

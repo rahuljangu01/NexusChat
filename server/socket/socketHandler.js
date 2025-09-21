@@ -95,20 +95,27 @@ const socketHandler = (io) => {
     socket.on('typing', (data) => io.to(data.receiverId).emit("user-typing", { userId }));
     socket.on('stop-typing', (data) => io.to(data.receiverId).emit("user-stop-typing", { userId }));
     
-    socket.on('send-message', async (data, callback) => {
+   socket.on('send-message', async (data, callback) => {
         try {
             const { receiverId, content, messageType = "text", tempId, fileName, fileSize } = data;
             const senderId = socket.userId;
+
             const connection = await Connection.findOne({ users: { $all: [senderId, receiverId] }, status: "accepted" });
             if (!connection) {
                 return callback({ error: "You can only message connected users." });
             }
+            
             let message = await Message.create({ sender: senderId, receiver: receiverId, content, messageType, fileName, fileSize });
-            message = await message.populate("sender receiver", "name profilePhotoUrl isOnline");
+            
+            // <<< --- YEH HAI ZAROORI BADLAAV --- >>>
+            // Hum message ko wapas bhejne se pehle use 'sender' ki details ke saath populate karenge
+            message = await message.populate("sender", "name profilePhotoUrl");
+
             const receiverSocketId = userSocketMap[receiverId];
             if (receiverSocketId) {
                 io.to(receiverSocketId).emit("receive-message", { ...message.toObject(), _type: 'message' });
             }
+            // Callback mein bhi populated message bhejo
             callback({ message: { ...message.toObject(), _type: 'message' } });
         } catch (error) {
             console.error(`Error in socket send-message from ${socket.userId}:`, error);
