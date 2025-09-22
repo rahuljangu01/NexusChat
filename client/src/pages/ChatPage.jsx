@@ -1,3 +1,5 @@
+// client/src/pages/ChatPage.jsx (UPDATED WITH WEBRTC CALL FIX)
+
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
@@ -16,7 +18,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "../components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../components/ui/dialog";
 import { getMessages, addMessage, updateMessage } from "../store/slices/chatSlice";
-import { setChatWallpaper, fetchConnections } from "../store/slices/connectionsSlice";
+import { setChatWallpaper, fetchConnections, clearUnreadCount } from "../store/slices/connectionsSlice";
 import { uploadFileToCloudinary, removeConnection, logCall, togglePinMessage, deleteMultipleMessages, forwardMessage, updateWallpaper } from "../utils/api";
 
 const peerOptions = { config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }]}};
@@ -150,12 +152,15 @@ const ChatPage = () => {
 
     const currentWallpaper = chatUserConnection?.chatWallpaper || '';
 
+    // <<< --- BADLAAV YAHAN HAI (1/3): `leaveCall` ko `useCallback` mein a se define karein --- >>>
     const leaveCall = useCallback(async (logIt = true) => {
         if (logIt && callState !== 'idle') {
             let status = 'rejected';
             if (callState === 'active') status = 'answered';
-            if (callState === 'calling') status = 'missed';
+            else if (callState === 'calling') status = 'missed';
+
             const receiverForLog = callState === 'calling' ? userId : (caller.id || null);
+            
             if (receiverForLog) { 
                 await logCall({ receiverId: receiverForLog, status, duration: callDuration });
                 dispatch(getMessages(userId));
@@ -180,28 +185,38 @@ const ChatPage = () => {
         }
     }, [callState, userId, caller.id, stream, callDuration, dispatch]);
 
+
+    // <<< --- BADLAAV YAHAN HAI (2/3): Call-related handlers ko `useCallback` se wrap karein --- >>>
+    const handleCallMade = useCallback(({ signal, from, type }) => {
+        setCaller(from);
+        setCallerSignal(signal);
+        setCallType(type);
+        setCallState('incoming');
+    }, []);
+
+    const handleCallAccepted = useCallback((signal) => {
+        // Yahan `if` condition check sidha `callState` ki value se karega, function se nahi
+        // Isliye stale closure ki problem solve ho jaati hai
+        if (connectionRef.current) {
+            setCallState('active');
+            durationIntervalRef.current = setInterval(() => setCallDuration(prev => prev + 1), 1000);
+            connectionRef.current.signal(signal);
+        }
+    }, []);
+
+    const handleCallEnded = useCallback(() => {
+        leaveCall(false);
+    }, [leaveCall]);
+
+
     useEffect(() => {
         if (!currentUser || !userId) return;
 
         dispatch(getMessages(userId));
+        socketService.emit('mark-messages-read', { chatUserId: userId });
+        dispatch(clearUnreadCount({ chatId: userId }));
         
-        const handleCallMade = ({ signal, from, type }) => {
-            setCaller(from);
-            setCallerSignal(signal);
-            setCallType(type);
-            setCallState('incoming');
-        };
-
-        const handleCallAccepted = (signal) => {
-            if (callState === 'calling' && connectionRef.current) {
-                setCallState('active');
-                durationIntervalRef.current = setInterval(() => setCallDuration(prev => prev + 1), 1000);
-                connectionRef.current.signal(signal);
-            }
-        };
-
-        const handleCallEnded = () => leaveCall(false);
-
+        // <<< --- BADLAAV YAHAN HAI (3/3): Ab hum stable handlers ka istemal kar rahe hain --- >>>
         socketService.on("call-made", handleCallMade);
         socketService.on("call-accepted", handleCallAccepted);
         socketService.on("call-ended", handleCallEnded);
@@ -211,18 +226,19 @@ const ChatPage = () => {
             socketService.off("call-accepted", handleCallAccepted);
             socketService.off("call-ended", handleCallEnded);
         };
-    }, [userId, currentUser, dispatch, leaveCall, callState]);
+    }, [userId, currentUser, dispatch, handleCallMade, handleCallAccepted, handleCallEnded]);
 
     const callUser = (type) => {
         navigator.mediaDevices.getUserMedia({ video: type === 'video', audio: true })
             .then(stream => {
                 setStream(stream);
                 if (myVideo.current) myVideo.current.srcObject = stream;
-                setCallState('calling');
-                setCallType(type);
-
+                
                 const peer = new Peer({ initiator: true, stream, ...peerOptions });
                 connectionRef.current = peer;
+
+                setCallState('calling'); // state update ko peer object banane ke baad karein
+                setCallType(type);
 
                 peer.on('signal', data => {
                     socketService.emit('call-user', { 
@@ -351,8 +367,6 @@ const ChatPage = () => {
 
     useEffect(() => {
         if (currentUser && userId) {
-            dispatch(fetchConnections(currentUser.id));
-            
             const handleUserTyping = ({ userId: typingUserId }) => { if (typingUserId === userId) setIsTyping(true); };
             const handleUserStopTyping = ({ userId: stopTypingUserId }) => { if (stopTypingUserId === userId) setIsTyping(false); };
             
