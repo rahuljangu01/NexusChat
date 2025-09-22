@@ -2,10 +2,11 @@ const Message = require("../models/Message");
 const CallRecord = require("../models/CallRecord");
 const Connection = require("../models/Connection");
 
-// Send a new message
+// Send a new message (Updated for Replies)
 exports.sendMessage = async (req, res) => {
   try {
-    const { receiverId, content, messageType = "text", fileName, fileSize } = req.body;
+    // <<< --- 'replyToMessageId' ko yahan se nikalein --- >>>
+    const { receiverId, content, messageType = "text", fileName, fileSize, replyToMessageId } = req.body;
     const senderId = req.user.id;
 
     if (!receiverId || !content) {
@@ -17,8 +18,24 @@ exports.sendMessage = async (req, res) => {
       return res.status(403).json({ message: "You can only message connected users." });
     }
 
-    let message = await Message.create({ sender: senderId, receiver: receiverId, content, messageType, fileName, fileSize });
-    message = await message.populate("sender receiver", "name profilePhotoUrl isOnline");
+    let message = await Message.create({ 
+        sender: senderId, 
+        receiver: receiverId, 
+        content, 
+        messageType, 
+        fileName, 
+        fileSize,
+        // <<< --- Reply ID ko save karein agar woh मौजूद hai --- >>>
+        replyTo: replyToMessageId || null 
+    });
+
+    // Populate everything needed for the frontend
+    message = await message
+        .populate("sender receiver", "name profilePhotoUrl isOnline")
+        .populate({
+            path: 'replyTo',
+            populate: { path: 'sender', select: 'name' }
+        });
 
     const io = req.app.get('io');
     const userSocketMap = io.userSocketMap;
@@ -35,7 +52,7 @@ exports.sendMessage = async (req, res) => {
   }
 };
 
-// Get all messages AND calls between two users
+// Get all messages (Updated to populate replies)
 exports.getMessages = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -48,14 +65,17 @@ exports.getMessages = async (req, res) => {
       ],
     })
       .populate("sender", "name profilePhotoUrl")
+      // <<< --- Reply wale message aur uske sender ki details bhi laayein --- >>>
+      .populate({
+          path: 'replyTo',
+          populate: { path: 'sender', select: 'name content messageType' }
+      })
+      .populate('reactions.user', 'name') // Populate user who reacted
       .sort({ createdAt: 1 })
       .lean();
 
-    const calls = await CallRecord.find({
-        users: { $all: [currentUserId, userId] }
-    })
-      .populate("caller", "name profilePhotoUrl")
-      .populate("receiver", "name profilePhotoUrl")
+    const calls = await CallRecord.find({ users: { $all: [currentUserId, userId] }})
+      .populate("caller receiver", "name profilePhotoUrl")
       .sort({ createdAt: 1 })
       .lean();
 
@@ -71,6 +91,67 @@ exports.getMessages = async (req, res) => {
     console.error(`Error in getMessages for user ${currentUserId}:`, error);
     res.status(500).json({ message: "Server error while fetching messages." });
   }
+};
+
+
+// <<< --- YEH NAYA FUNCTION ADD KAREIN (toggleReaction) --- >>>
+exports.toggleReaction = async (req, res) => {
+    try {
+        const { messageId } = req.params;
+        const { emoji } = req.body;
+        const userId = req.user.id;
+
+        if (!emoji) {
+            return res.status(400).json({ message: "Emoji is required." });
+        }
+
+        const message = await Message.findById(messageId);
+        if (!message) {
+            return res.status(404).json({ message: "Message not found." });
+        }
+
+        const reactionIndex = message.reactions.findIndex(
+            r => r.user.toString() === userId
+        );
+
+        // User ne pehle se react kiya hai
+        if (reactionIndex > -1) {
+            // Agar same emoji hai, to reaction hata do (unlike)
+            if (message.reactions[reactionIndex].emoji === emoji) {
+                message.reactions.splice(reactionIndex, 1);
+            } else { // Agar alag emoji hai, to update kar do
+                message.reactions[reactionIndex].emoji = emoji;
+            }
+        } else { // User pehli baar react kar raha hai
+            message.reactions.push({ emoji, user: userId });
+        }
+
+        await message.save();
+        
+        const populatedMessage = await message.populate('reactions.user', 'name')
+            .populate("sender", "name profilePhotoUrl")
+            .populate({
+                path: 'replyTo',
+                populate: { path: 'sender', select: 'name content messageType' }
+            });
+
+        // Sabhi clients ko real-time update bhejo
+        const io = req.app.get('io');
+        const chatPartnerId = message.sender.toString() === userId ? message.receiver.toString() : message.sender.toString();
+        const userSocketMap = io.userSocketMap;
+        
+        const senderSocketId = userSocketMap[message.sender.toString()];
+        const receiverSocketId = userSocketMap[message.receiver.toString()];
+
+        if (senderSocketId) io.to(senderSocketId).emit('message-updated', populatedMessage);
+        if (receiverSocketId && receiverSocketId !== senderSocketId) io.to(receiverSocketId).emit('message-updated', populatedMessage);
+
+
+        res.status(200).json({ success: true, message: populatedMessage });
+    } catch (error) {
+        console.error("Toggle reaction error:", error);
+        res.status(500).json({ message: "Server error." });
+    }
 };
 
 // Mark a message as read by the current user

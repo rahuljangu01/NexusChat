@@ -58,6 +58,18 @@ const chatSlice = createSlice({
       }
     }
   },
+  updateSingleMessageInChat: (state, action) => {
+        const updatedMessage = action.payload;
+        // Pata lagao ki yeh message kis chat ka hai
+        const chatId = updatedMessage.sender._id === state.activeChat ? updatedMessage.receiver._id : updatedMessage.sender._id;
+
+        if (state.messages[chatId]) {
+            const messageIndex = state.messages[chatId].findIndex(m => m._id === updatedMessage._id);
+            if (messageIndex !== -1) {
+                state.messages[chatId][messageIndex] = updatedMessage;
+            }
+        }
+    },
   extraReducers: (builder) => {
     builder
       .addCase(getMessages.pending, (state, action) => {
@@ -76,5 +88,5 @@ const chatSlice = createSlice({
   },
 });
 
-export const { addMessage, updateMessage, updateSentMessagesStatus } = chatSlice.actions;
+export const { addMessage, updateMessage, updateSentMessagesStatus, updateSingleMessageInChat } = chatSlice.actions;
 export default chatSlice.reducer;

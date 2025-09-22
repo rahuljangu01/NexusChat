@@ -22,7 +22,7 @@ import { MessageSquare } from "lucide-react";
 
 // Service & Redux Imports
 import { socketService } from "./services/socketService";
-import { addMessage, updateSentMessagesStatus } from "./store/slices/chatSlice";
+import { addMessage, updateSentMessagesStatus, updateSingleMessageInChat  } from "./store/slices/chatSlice";
 import { setUserOnline, setUserOffline, updateConnectionLastMessage, incrementUnreadCount, updateConnectionProfile } from "./store/slices/connectionsSlice";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 
@@ -67,6 +67,11 @@ function App() {
           }
         } 
       };
+
+      const handleMessageUpdated = (updatedMessage) => {
+                dispatch(updateSingleMessageInChat(updatedMessage));
+            };
+            socketService.socket.on('message-updated', handleMessageUpdated);
       
       const handleMessagesDelivered = ({ chatPartnerId }) => {
         dispatch(updateSentMessagesStatus({ chatPartnerId, status: 'delivered' }));
@@ -96,6 +101,7 @@ function App() {
         socketService.socket.off('messages-delivered', handleMessagesDelivered);
         socketService.socket.off('messages-read', handleMessagesRead);
         socketService.socket.off('connection-profile-updated', handleProfileUpdate);
+        socketService.socket.off('message-updated', handleMessageUpdated);
         socketService.disconnect();
       };
     }
