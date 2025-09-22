@@ -183,7 +183,6 @@ const ChatPage = () => {
     useEffect(() => {
         if (!currentUser || !userId) return;
 
-        socketService.emit('mark-messages-read', { chatUserId: userId });
         dispatch(getMessages(userId));
         
         const handleCallMade = ({ signal, from, type }) => {
@@ -192,75 +191,75 @@ const ChatPage = () => {
             setCallType(type);
             setCallState('incoming');
         };
+
+        const handleCallAccepted = (signal) => {
+            if (callState === 'calling' && connectionRef.current) {
+                setCallState('active');
+                durationIntervalRef.current = setInterval(() => setCallDuration(prev => prev + 1), 1000);
+                connectionRef.current.signal(signal);
+            }
+        };
+
         const handleCallEnded = () => leaveCall(false);
 
         socketService.on("call-made", handleCallMade);
+        socketService.on("call-accepted", handleCallAccepted);
         socketService.on("call-ended", handleCallEnded);
 
         return () => {
             socketService.off("call-made", handleCallMade);
+            socketService.off("call-accepted", handleCallAccepted);
             socketService.off("call-ended", handleCallEnded);
         };
-    }, [userId, currentUser, dispatch, leaveCall]);
+    }, [userId, currentUser, dispatch, leaveCall, callState]);
 
     const callUser = (type) => {
-        const constraints = { video: type === 'video', audio: true };
-        navigator.mediaDevices.getUserMedia(constraints).then(stream => {
-            setStream(stream);
-            if (myVideo.current) myVideo.current.srcObject = stream;
+        navigator.mediaDevices.getUserMedia({ video: type === 'video', audio: true })
+            .then(stream => {
+                setStream(stream);
+                if (myVideo.current) myVideo.current.srcObject = stream;
+                setCallState('calling');
+                setCallType(type);
 
-            setCallState('calling');
-            setCallType(type);
+                const peer = new Peer({ initiator: true, stream, ...peerOptions });
+                connectionRef.current = peer;
 
-            const peer = new Peer({ initiator: true, stream, ...peerOptions });
-            connectionRef.current = peer;
+                peer.on('signal', data => {
+                    socketService.emit('call-user', { 
+                        userToCall: userId, 
+                        signalData: data, 
+                        from: { id: currentUser.id, name: currentUser.name, profilePhotoUrl: currentUser.profilePhotoUrl }, 
+                        type 
+                    });
+                });
 
-            const handleCallAccepted = (signal) => {
-                setCallState('active');
-                durationIntervalRef.current = setInterval(() => setCallDuration(prev => prev + 1), 1000);
-                if (connectionRef.current) {
-                    connectionRef.current.signal(signal);
-                }
-                socketService.off('call-accepted', handleCallAccepted);
-            };
-            socketService.on('call-accepted', handleCallAccepted);
-
-            peer.on('signal', data => {
-                const payload = { 
-                    userToCall: userId, 
-                    signalData: data, 
-                    from: { id: currentUser.id, name: currentUser.name, profilePhotoUrl: currentUser.profilePhotoUrl }, 
-                    type 
-                };
-                socketService.emit('call-user', payload);
+                peer.on('stream', remoteStream => { 
+                    if (userVideo.current) userVideo.current.srcObject = remoteStream; 
+                });
+            })
+            .catch(err => {
+                console.error("getUserMedia FAILED!", err);
+                alert(`Could not start call. Error: ${err.name}. Please check camera/mic permissions.`);
             });
-
-            peer.on('stream', remoteStream => { 
-                if (userVideo.current) userVideo.current.srcObject = remoteStream; 
-            });
-
-        }).catch(err => {
-            console.error("[Call] getUserMedia FAILED! Error:", err.name, err.message);
-            alert(`Could not start call. Error: ${err.name}. Please check camera/mic permissions in your browser.`);
-        });
     };
 
     const answerCall = () => {
-        const constraints = { video: callType === 'video', audio: true };
-        navigator.mediaDevices.getUserMedia(constraints).then(stream => {
-            setStream(stream);
-            if (myVideo.current) myVideo.current.srcObject = stream;
-            setCallState('active');
-            durationIntervalRef.current = setInterval(() => setCallDuration(prev => prev + 1), 1000);
-            
-            const peer = new Peer({ initiator: false, stream, ...peerOptions });
-            connectionRef.current = peer;
-            
-            peer.on('signal', data => { socketService.emit('answer-call', { signal: data, to: caller.id }); });
-            peer.on('stream', remoteStream => { if(userVideo.current) userVideo.current.srcObject = remoteStream; });
-            
-            peer.signal(callerSignal);
-        }).catch(err => console.error("getUserMedia error:", err));
+        navigator.mediaDevices.getUserMedia({ video: callType === 'video', audio: true })
+            .then(stream => {
+                setStream(stream);
+                if (myVideo.current) myVideo.current.srcObject = stream;
+                setCallState('active');
+                durationIntervalRef.current = setInterval(() => setCallDuration(prev => prev + 1), 1000);
+                
+                const peer = new Peer({ initiator: false, stream, ...peerOptions });
+                connectionRef.current = peer;
+                
+                peer.on('signal', data => { socketService.emit('answer-call', { signal: data, to: caller.id }); });
+                peer.on('stream', remoteStream => { if(userVideo.current) userVideo.current.srcObject = remoteStream; });
+                
+                peer.signal(callerSignal);
+            })
+            .catch(err => console.error("getUserMedia error on answer:", err));
     };
     
     const toggleMute = () => {
@@ -397,24 +396,16 @@ const ChatPage = () => {
         setShowEmojiPicker(false);
 
         try {
-            const response = await new Promise((resolve, reject) => {
-                socketService.emit('send-message', {
-                    receiverId: userId,
-                    content: messageToSend,
-                    tempId: tempId,
-                }, (ack) => {
-                    if (ack.error) {
-                        reject(new Error(ack.error));
-                    } else {
-                        resolve(ack);
-                    }
-                });
+            socketService.emit('send-message', {
+                receiverId: userId,
+                content: messageToSend,
+                tempId: tempId,
+            }, (ack) => {
+                if (ack.message) {
+                    dispatch(updateMessage({ chatId: userId, tempId: tempId, finalMessage: ack.message }));
+                    dispatch(fetchConnections(currentUser.id));
+                }
             });
-
-            if (response.message) {
-                dispatch(updateMessage({ chatId: userId, tempId: tempId, finalMessage: response.message }));
-                dispatch(fetchConnections(currentUser.id));
-            }
         } catch (error) {
             console.error("Failed to send message:", error.message);
         }
@@ -427,14 +418,13 @@ const ChatPage = () => {
         try {
             const uploadedFile = await uploadFileToCloudinary(file);
             
-            const tempId = Date.now().toString();
             socketService.emit('send-message', {
                 receiverId: userId,
                 content: uploadedFile.url,
                 messageType: file.type.startsWith("image") ? 'image' : 'file',
                 fileName: file.name,
                 fileSize: file.size,
-                tempId: tempId
+                tempId: Date.now().toString()
             }, (ack) => {
                  if (ack.message) {
                     dispatch(fetchConnections(currentUser.id));
@@ -573,7 +563,7 @@ const ChatPage = () => {
                                     {showDateHeader && (<div className="text-center text-xs text-slate-500 my-4 bg-slate-800/50 self-center px-3 py-1 rounded-full">{format(new Date(item.createdAt), 'MMMM d, yyyy')}</div>)}
                                     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} onClick={() => handleMessageClick(item._id)} className={`flex items-end gap-1.5 my-0.5 rounded-lg transition-colors duration-200 ${isSender ? "justify-end" : "justify-start"} ${isSelected ? 'bg-indigo-500/20' : ''}`}>
                                         {!isSender && <Avatar className="h-6 w-6 self-end"><AvatarImage src={chatUser?.profilePhotoUrl}/><AvatarFallback className="text-xs">{chatUser?.name?.charAt(0)}</AvatarFallback></Avatar>}
-                                        <div className={`message-bubble max-w-[45%] md:max-w-[25%] rounded-xl ${isSender ? "bg-indigo-600 sent" : "bg-[#2a2a36] received"}`}>
+                                        <div className={`message-bubble max-w-[40%] md:max-w-[25%] rounded-xl ${isSender ? "bg-indigo-600 sent" : "bg-[#2a2a36] received"}`}>
                                             {item.messageType === 'image' ? (
                                                 <a href={item.content} target="_blank" rel="noopener noreferrer" className="block p-1">
                                                     <img src={item.content} alt="Sent" className="max-w-xs md:max-w-sm h-auto rounded-lg" />
