@@ -195,8 +195,8 @@ const ChatPage = () => {
     }, []);
 
     const handleCallAccepted = useCallback((signal) => {
-        // Yahan `if` condition check sidha `callState` ki value se karega, function se nahi
-        // Isliye stale closure ki problem solve ho jaati hai
+        // Hum yahan `connectionRef` ko check karenge, jo state ke stale hone se prabhavit nahi hota.
+        // Yahi is problem ka mukhya samadhan hai.
         if (connectionRef.current) {
             setCallState('active');
             durationIntervalRef.current = setInterval(() => setCallDuration(prev => prev + 1), 1000);
