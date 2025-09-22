@@ -20,3 +20,10 @@
 .message-bubble.received {
   border-bottom-left-radius: 4px;
 }
+
+.message-bubble img {
+  display: block;
+  max-width: 100%; /* The image can never be wider than its bubble */
+  height: auto;   /* Maintain the aspect ratio */
+  border-radius: 0.5rem; /* Match the bubble's rounded corners */
+}

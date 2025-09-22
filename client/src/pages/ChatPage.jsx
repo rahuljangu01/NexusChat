@@ -6,7 +6,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { format, isSameDay } from 'date-fns';
 import Peer from 'simple-peer';
 import EmojiPicker from 'emoji-picker-react';
-
 import CallingUI from "../components/CallingUI";
 import InfoPanel from "../components/InfoPanel";
 import { socketService } from "../services/socketService";
@@ -500,7 +499,7 @@ const ChatPage = () => {
                 currentWallpaper={currentWallpaper}
                 onWallpaperChange={(url) => dispatch(setChatWallpaper({ connectionId: chatUserConnection._id, wallpaperUrl: url }))}
             />
-
+            
             <header className="flex items-center px-2 py-1 h-14 border-b border-slate-800 bg-slate-900/70 backdrop-blur-lg z-20">
                 {selectionMode ? (
                     <div className="flex items-center justify-between w-full">
@@ -542,52 +541,62 @@ const ChatPage = () => {
                 )}
             </header>
             
-            <div className="overflow-y-auto custom-scrollbar relative">
-                {pinnedMessage && !selectionMode && (<motion.div initial={{y: -50}} animate={{y: 0}} className="sticky top-0 p-2 bg-slate-800/80 backdrop-blur-sm flex items-center gap-2 text-sm text-slate-300 border-b border-slate-700 z-10"><Pin className="h-4 w-4 text-indigo-400 flex-shrink-0" /><p className="truncate flex-1">{pinnedMessage.content}</p><Button variant="ghost" size="icon" className="h-6 w-6" onClick={async () => { await togglePinMessage(pinnedMessage._id); dispatch(getMessages(userId)); }}><CloseIcon className="h-4 w-4" /></Button></motion.div>)}
+            <div className="relative overflow-hidden">
+                {pinnedMessage && !selectionMode && (<motion.div initial={{y: -50}} animate={{y: 0}} className="absolute top-0 left-0 right-0 p-2 bg-slate-800/80 backdrop-blur-sm flex items-center gap-2 text-sm text-slate-300 border-b border-slate-700 z-20"><Pin className="h-4 w-4 text-indigo-400 flex-shrink-0" /><p className="truncate flex-1">{pinnedMessage.content}</p><Button variant="ghost" size="icon" className="h-6 w-6" onClick={async () => { await togglePinMessage(pinnedMessage._id); dispatch(getMessages(userId)); }}><CloseIcon className="h-4 w-4" /></Button></motion.div>)}
                 
-                {currentWallpaper ? (<div className="absolute inset-0 w-full h-full bg-cover bg-center z-0" style={{ backgroundImage: `url(${currentWallpaper})` }}><div className="absolute inset-0 w-full h-full bg-black/50"></div></div>) : (<div className="static-pattern-background"></div>)}
-                
-                <div className="relative z-10 p-3 flex flex-col">
-                    {activeChatMessages.map((item, index) => {
-                        const showDateHeader = index === 0 || !isSameDay(new Date(activeChatMessages[index - 1].createdAt), new Date(item.createdAt));
-                        if (item._type === 'call') {
-                            const isOutgoing = item.caller._id === currentUser.id;
-                            const callTime = format(new Date(item.createdAt), 'p');
-                            let Icon = PhoneIncoming; let text = 'Incoming call';
-                            if (isOutgoing) { Icon = PhoneOutgoing; text = 'Outgoing call'; }
-                            if (item.status === 'missed' || item.status === 'rejected') { Icon = PhoneMissed; text = 'Missed call'; }
-                            return (<div key={item._id || index}>{showDateHeader && (<div className="text-center text-xs text-slate-500 my-4 bg-slate-800/50 self-center px-3 py-1 rounded-full">{format(new Date(item.createdAt), 'MMMM d, yyyy')}</div>)}<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center justify-center my-3"><div className="flex items-center gap-2 text-sm text-slate-400 bg-slate-800/60 px-3 py-1.5 rounded-lg"><Icon className={`h-4 w-4 ${item.status === 'missed' || item.status === 'rejected' ? 'text-red-400' : 'text-slate-500'}`} /><span>{text}</span><span>•</span><span>{callTime}</span></div></motion.div></div>);
-                        }
-                        const isSender = item.sender?._id === currentUser.id;
-                        const isSelected = selectedMessages.has(item._id);
-                        return (
-                            <div key={item._id || index} onContextMenu={(e) => { e.preventDefault(); handleMessageLongPress(item._id); }}>
-                                {showDateHeader && (<div className="text-center text-xs text-slate-500 my-4 bg-slate-800/50 self-center px-3 py-1 rounded-full">{format(new Date(item.createdAt), 'MMMM d, yyyy')}</div>)}
-                                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} onClick={() => handleMessageClick(item._id)} className={`flex items-end gap-1.5 my-0.5 rounded-lg transition-colors duration-200 ${isSender ? "justify-end" : "justify-start"} ${isSelected ? 'bg-indigo-500/20' : ''}`}>
-                                    {!isSender && <Avatar className="h-6 w-6 self-end"><AvatarImage src={chatUser?.profilePhotoUrl}/><AvatarFallback className="text-xs">{chatUser?.name?.charAt(0)}</AvatarFallback></Avatar>}
-                                    <div className={`message-bubble max-w-[85%] rounded-xl ${isSender ? "bg-indigo-600 sent" : "bg-[#2a2a36] received"}`}>
-                                        {item.messageType === 'image' ? (
-                                            <a href={item.content} target="_blank" rel="noopener noreferrer" className="block p-1">
-                                                <img src={item.content} alt="Sent" className="max-w-full h-auto rounded-lg" />
-                                            </a>
-                                        ) : item.messageType === 'file' ? (
-                                            <a href={item.content} target="_blank" rel="noopener noreferrer" download={item.fileName || 'file'} className="flex items-center gap-3 p-3 text-white hover:underline bg-slate-700/50 rounded-lg">
-                                                <Paperclip className="h-8 w-8 flex-shrink-0 text-slate-400" />
-                                                <div className="overflow-hidden">
-                                                    <p className="font-semibold truncate">{item.fileName || 'Attached File'}</p>
-                                                    <p className="text-xs text-slate-300">{item.fileSize ? `${(item.fileSize / 1024).toFixed(2)} KB` : ''}</p>
-                                                </div>
-                                            </a>
-                                        ) : (
-                                            <p className="px-2.5 py-1.5 text-sm break-words text-white">{item.content}</p>
-                                        )}
-                                        <span className="text-[10px] opacity-70 float-right mr-2 mb-1 self-end text-white/70 flex items-center">{formatTime(item.createdAt)}{isSender && <MessageStatus status={item.status} />}</span>
-                                    </div>
-                                </motion.div>
-                            </div>
-                        );
-                    })}
-                    <div ref={messagesEndRef} />
+                <div className="absolute inset-0 z-0">
+                    {currentWallpaper ? (
+                        <div className="w-full h-full bg-cover bg-center" style={{ backgroundImage: `url(${currentWallpaper})` }}>
+                            <div className="w-full h-full bg-black/50"></div>
+                        </div>
+                    ) : (
+                        <div className="static-pattern-background" style={{height: '100%', width: '100%'}}></div>
+                    )}
+                </div>
+
+                <div className="relative z-10 h-full overflow-y-auto custom-scrollbar">
+                    <div className="p-3 flex flex-col">
+                        {activeChatMessages.map((item, index) => {
+                            const showDateHeader = index === 0 || !isSameDay(new Date(activeChatMessages[index - 1].createdAt), new Date(item.createdAt));
+                            if (item._type === 'call') {
+                                const isOutgoing = item.caller._id === currentUser.id;
+                                const callTime = format(new Date(item.createdAt), 'p');
+                                let Icon = PhoneIncoming; let text = 'Incoming call';
+                                if (isOutgoing) { Icon = PhoneOutgoing; text = 'Outgoing call'; }
+                                if (item.status === 'missed' || item.status === 'rejected') { Icon = PhoneMissed; text = 'Missed call'; }
+                                return (<div key={item._id || index}>{showDateHeader && (<div className="text-center text-xs text-slate-500 my-4 bg-slate-800/50 self-center px-3 py-1 rounded-full">{format(new Date(item.createdAt), 'MMMM d, yyyy')}</div>)}<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center justify-center my-3"><div className="flex items-center gap-2 text-sm text-slate-400 bg-slate-800/60 px-3 py-1.5 rounded-lg"><Icon className={`h-4 w-4 ${item.status === 'missed' || item.status === 'rejected' ? 'text-red-400' : 'text-slate-500'}`} /><span>{text}</span><span>•</span><span>{callTime}</span></div></motion.div></div>);
+                            }
+                            const isSender = item.sender?._id === currentUser.id;
+                            const isSelected = selectedMessages.has(item._id);
+                            return (
+                                <div key={item._id || index} onContextMenu={(e) => { e.preventDefault(); handleMessageLongPress(item._id); }}>
+                                    {showDateHeader && (<div className="text-center text-xs text-slate-500 my-4 bg-slate-800/50 self-center px-3 py-1 rounded-full">{format(new Date(item.createdAt), 'MMMM d, yyyy')}</div>)}
+                                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} onClick={() => handleMessageClick(item._id)} className={`flex items-end gap-1.5 my-0.5 rounded-lg transition-colors duration-200 ${isSender ? "justify-end" : "justify-start"} ${isSelected ? 'bg-indigo-500/20' : ''}`}>
+                                        {!isSender && <Avatar className="h-6 w-6 self-end"><AvatarImage src={chatUser?.profilePhotoUrl}/><AvatarFallback className="text-xs">{chatUser?.name?.charAt(0)}</AvatarFallback></Avatar>}
+                                        <div className={`message-bubble max-w-[45%] md:max-w-[25%] rounded-xl ${isSender ? "bg-indigo-600 sent" : "bg-[#2a2a36] received"}`}>
+                                            {item.messageType === 'image' ? (
+                                                <a href={item.content} target="_blank" rel="noopener noreferrer" className="block p-1">
+                                                    <img src={item.content} alt="Sent" className="max-w-xs md:max-w-sm h-auto rounded-lg" />
+                                                </a>
+                                            ) : item.messageType === 'file' ? (
+                                                <a href={item.content} target="_blank" rel="noopener noreferrer" download={item.fileName || 'file'} className="flex items-center gap-3 p-3 text-white hover:underline bg-slate-700/50 rounded-lg">
+                                                    <Paperclip className="h-8 w-8 flex-shrink-0 text-slate-400" />
+                                                    <div className="overflow-hidden">
+                                                        <p className="font-semibold truncate">{item.fileName || 'Attached File'}</p>
+                                                        <p className="text-xs text-slate-300">{item.fileSize ? `${(item.fileSize / 1024).toFixed(2)} KB` : ''}</p>
+                                                    </div>
+                                                </a>
+                                            ) : (
+                                                <p className="px-2.5 py-1.5 text-sm break-words text-white">{item.content}</p>
+                                            )}
+                                            <span className="text-[10px] opacity-70 float-right mr-2 mb-1 self-end text-white/70 flex items-center">{formatTime(item.createdAt)}{isSender && <MessageStatus status={item.status} />}</span>
+                                        </div>
+                                    </motion.div>
+                                </div>
+                            );
+                        })}
+                        <div ref={messagesEndRef} />
+                    </div>
                 </div>
             </div>
             
