@@ -1,4 +1,4 @@
-// client/src/pages/GroupChatPage.jsx (FINAL & COMPLETE WITH DELETE LOGIC)
+// client/src/pages/GroupChatPage.jsx (FINAL & CORRECTED)
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
@@ -11,7 +11,8 @@ import Peer from 'simple-peer';
 import Select from 'react-select';
 
 import { socketService } from "../services/socketService";
-import api, { uploadProfilePhoto, logCall, getMyConnections, addMembersToGroup } from "../utils/api";
+// <<< --- BADLAAV YAHAN HAI --- >>>
+import api, { uploadFileToCloudinary, logCall, getMyConnections, addMembersToGroup } from "../utils/api";
 import "./Dashboard.css";
 
 import { Button } from "../components/ui/button";
@@ -298,7 +299,8 @@ const GroupChatPage = () => {
         if (!file) return;
         setIsUploading(true);
         try {
-            const uploadedFile = await uploadProfilePhoto(file);
+            // <<< --- BADLAAV YAHAN HAI --- >>>
+            const uploadedFile = await uploadFileToCloudinary(file);
             await api.post(`/groups/${groupId}/send`, { content: uploadedFile.url, messageType: file.type.startsWith("image") ? 'image' : 'file', fileName: file.name, fileSize: file.size });
         } catch (error) { 
             alert("Failed to upload file."); 

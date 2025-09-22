@@ -1,10 +1,5 @@
-// client/src/utils/api.js (FINAL HARDCODED FIX)
-
 import axios from "axios";
 
-// <<< --- THIS IS THE HARDCODED FIX FOR THE API URL --- >>>
-// It points directly to your live Render service.
-// const API_URL = "https://nexuschat-kmk8.onrender.com/api";
 const API_URL = "/api";
 console.log("API requests will be sent to:", API_URL);
 
@@ -108,13 +103,15 @@ export const deleteMultipleMessages = async (messageIds) => {
   return data;
 };
 
-export const uploadProfilePhoto = async (file) => {
+// <<< --- YEH HAI PURANA, SIMPLE AUR RELIABLE UPLOAD FUNCTION --- >>>
+export const uploadFileToCloudinary = async (file) => {
   const formData = new FormData();
   formData.append('file', file);
+  // Hum ab seedhe apne server ke '/api/upload/file' endpoint par bhejenge
   const { data } = await api.post('/upload/file', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
-  return data.file;
+  return data.file; // Server se file ki details return hongi
 };
 
 export const discoverPublicGroups = async () => {
@@ -206,6 +203,7 @@ export const resetPassword = async (token, password) => {
   const { data } = await api.post(`/auth/reset-password/${token}`, { password });
   return data;
 };
+
 export const getSharedMedia = async (userId) => {
   const { data } = await api.get(`/messages/${userId}/media`);
   return data.media;

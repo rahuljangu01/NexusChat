@@ -1,14 +1,13 @@
-// server/routes/upload.js
+// server/routes/upload.js (REVERTED TO SIMPLE UPLOAD)
 
 const express = require("express");
-const { uploadFile } = require("../controllers/uploadController");
+const { uploadFile } = require("../controllers/uploadController"); // uploadFile ko wapas use karo
 const { protect } = require("../middleware/auth");
-// FIX: The path should be '../middleware/upload', not '../middleware/upload.js'
 const { upload } = require("../middleware/upload");
 
 const router = express.Router();
 
-// The route should be: POST /api/upload/file
+// Route ko wapas '/file' kar do
 router.post("/file", protect, upload.single("file"), uploadFile);
 
 module.exports = router;
