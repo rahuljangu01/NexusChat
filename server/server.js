@@ -1,4 +1,4 @@
-// server/server.js (FINAL, ROBUST & RESPONSIVE FIX)
+// server/server.js (FINAL & GUARANTEED FIX)
 
 const http = require("http");
 const path = require('path');
@@ -31,18 +31,19 @@ const allowedOrigins = allowedOriginsString.split(',').map(origin => origin.trim
 
 console.log(`[CORS CONFIG] Server will allow requests from:`, allowedOrigins);
 
+// <<< --- THIS IS THE FINAL AND CORRECT CORS CONFIGURATION --- >>>
 const corsOptions = {
-    origin: (origin, callback) => {
-        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-            callback(null, true);
-        } else {
-            callback(new Error("Not allowed by CORS"));
-        }
-    },
+    origin: allowedOrigins,
     credentials: true,
 };
 
-const io = socketIo(server, { cors: corsOptions });
+// Apply CORS middleware for all HTTP requests
+app.use(cors(corsOptions));
+
+const io = socketIo(server, {
+  cors: corsOptions, // Use the same options for Socket.IO
+});
+// <<< --- END OF FIX --- >>>
 
 app.set('io', io);
 socketHandler(io);
@@ -52,8 +53,11 @@ app.use((req, res, next) => {
     next();
 });
 
-app.use(cors(corsOptions));
-app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+app.use(helmet({ 
+    contentSecurityPolicy: false, 
+    crossOriginEmbedderPolicy: false 
+}));
+
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
