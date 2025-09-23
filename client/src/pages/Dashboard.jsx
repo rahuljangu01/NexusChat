@@ -1,9 +1,10 @@
-// client/src/pages/Dashboard.jsx (FINAL - Attractive UI, Responsive, All Fixes)
+// client/src/pages/Dashboard.jsx (FINAL - With All Imports and "More" Menu)
 
 import { useState, useEffect } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useNavigate, Link, useLocation, Outlet } from "react-router-dom";
 import { format } from "date-fns";
+// <<< --- ICONS ARE IMPORTED HERE --- >>>
 import { Search, UserPlus, LogOut, LayoutDashboard, Phone, CircleDashed, Users, Code, AlertTriangle, UserCheck, MoreVertical, User } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -15,6 +16,7 @@ import { Button } from "../components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter } from "../components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
+// <<< --- DROPDOWNMENU IS IMPORTED HERE --- >>>
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
 import UserListItem from "../components/UserListItem";
 import { searchUsers, sendConnectionRequest, acceptConnectionRequest, rejectConnectionRequest, removeConnection } from "../utils/api";
@@ -116,10 +118,9 @@ const Dashboard = () => {
 
   const navItems = [
     { path: '/dashboard', label: 'Chats', icon: LayoutDashboard },
-    { path: '/dashboard/status', label: 'Status', icon: CircleDashed },
-    
-    { path: '/dashboard/groups', label: 'Groups', icon: Users },
     { path: '/dashboard/calls', label: 'Calls', icon: Phone },
+    { path: '/dashboard/status', label: 'Status', icon: CircleDashed },
+    { path: '/dashboard/groups', label: 'Groups', icon: Users },
   ];
   
   const isLinkActive = (path) => {
@@ -130,7 +131,7 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="h-[100svh] w-screen flex text-gray-200 bg-[#0d1117] overflow-hidden">
+    <div className="h-screen w-screen flex text-gray-200 bg-[#0d1117] overflow-hidden">
       <aside className="hidden md:flex w-20 bg-[#0d1117] p-4 flex-col items-center justify-between z-20 flex-shrink-0">
         <div>
           <Link to="/dashboard" className="block mb-10"><img src="/logo.png" alt="Nexus Logo" className="h-10 w-10 transition-transform hover:scale-110"/></Link>
@@ -165,29 +166,19 @@ const Dashboard = () => {
       </aside>
 
       <div className={`
-          bg-[#161b22] w-full md:w-[350px] md:flex-shrink-0 border-r border-slate-800 flex-col
+          bg-[#161b22] w-full md:w-[320px] md:flex-shrink-0 border-r border-slate-800 flex-col
           ${isDashboardHome ? 'flex' : 'hidden md:flex'}
       `}>
-          <header className="p-4 h-20 flex-shrink-0 flex items-center justify-between border-b border-slate-800 bg-[#1e293b]/30">
+          <header className="p-4 h-20 flex-shrink-0 flex items-center justify-between border-b border-slate-800">
               <div className="flex items-center gap-3">
-                  <img src="/logo.png" alt="Nexus Logo" className="h-9 w-9" />
-                  <h1 className="font-bold text-2xl text-white tracking-wide">Nexus</h1>
+                  <img src="/logo.png" alt="Nexus Logo" className="h-8 w-8" />
+                  <h1 className="font-bold text-2xl text-white">Nexus</h1>
               </div>
-              <Dialog>
-                  <DialogTrigger asChild>
-                    <Button variant="ghost" className="h-10 w-10 rounded-full bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/40 hover:text-indigo-300">
-                        <UserPlus className="h-5 w-5"/>
-                    </Button>
-                  </DialogTrigger>
-                  <FindPeersDialog user={user} connections={connections} onAction={{handleAction, pendingRequests}} />
-              </Dialog>
+              <Dialog><DialogTrigger asChild><Button variant="ghost" size="icon" className="h-9 w-9 text-slate-400 hover:bg-slate-700 hover:text-white"><UserPlus className="h-5 w-5"/></Button></DialogTrigger><FindPeersDialog user={user} connections={connections} onAction={{handleAction, pendingRequests}} /></Dialog>
           </header>
           
           <div className="p-4 border-b border-slate-800">
-              <div className="relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-500"/>
-                <Input placeholder="Search chats..." value={chatSearch} onChange={(e) => setChatSearch(e.target.value)} className="pl-12 h-12 text-base bg-slate-900 border-slate-700 focus:ring-indigo-500 rounded-full" />
-              </div>
+              <div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400"/><Input placeholder="Search chats..." value={chatSearch} onChange={(e) => setChatSearch(e.target.value)} className="pl-10 bg-slate-800 border-slate-700 focus:ring-indigo-500 rounded-full" /></div>
           </div>
 
           <AnimatePresence>
@@ -207,51 +198,20 @@ const Dashboard = () => {
 
           <div className="flex-1 overflow-y-auto custom-scrollbar">
             <div className="p-2">
-              <h3 className="text-sm font-semibold text-indigo-400 mb-2 px-3 uppercase tracking-wider">Messages</h3>
+              <h3 className="text-xs font-semibold text-indigo-400 mb-2 px-2 uppercase tracking-wider">Messages</h3>
               <AnimatePresence>
                   {sortedAndFilteredConnections.map(conn => {
                     const otherUser = conn.users.find(u => u && u._id !== user.id);
                     if (!otherUser) return null;
                     const { lastMessage, unreadCount } = conn;
-                    const isActiveChat = location.pathname.includes(otherUser._id);
-
                     return (
-                      <motion.div 
-                      layout 
-                      key={conn._id} 
-                      initial={{ opacity: 0, y: -10 }} 
-                      animate={{ opacity: 1, y: 0 }} 
-                      exit={{ opacity: 0 }} 
-                      onClick={() => navigate(`/dashboard/chat/${otherUser._id}`)} 
-                      className={`flex items-center p-2 rounded-lg cursor-pointer transition-colors duration-200 mx-2
-                                  ${isActiveChat ? 'chat-item-active' : 'hover:bg-slate-800/50'}`}
-                  >
-                      <div className="relative">
-                          {/* <<< --- UI CHANGE: Smaller Avatar --- >>> */}
-                          <Avatar className="h-12 w-12 border-2 border-transparent group-hover:border-indigo-500">
-                              <AvatarImage src={otherUser.profilePhotoUrl}/>
-                              <AvatarFallback>{otherUser.name.charAt(0)}</AvatarFallback>
-                          </Avatar>
-                          <span className={`absolute bottom-0 right-0 block h-3 w-3 rounded-full ${otherUser.isOnline ? 'bg-green-400' : 'bg-slate-500'} ring-2 ring-[#161b22]`}></span>
-                      </div>
-                      <div className="flex-1 ml-3 overflow-hidden">
-                          <div className="flex justify-between items-center">
-                              {/* <<< --- UI CHANGE: Smaller Font --- >>> */}
-                              <h3 className={`font-semibold text-sm truncate ${unreadCount > 0 || isActiveChat ? 'text-white' : 'text-gray-300'}`}>{otherUser.name}</h3>
-                              {lastMessage && <p className="text-xs text-slate-400 flex-shrink-0">{format(new Date(lastMessage.createdAt), 'p')}</p>}
-                          </div>
-                          <div className="flex justify-between items-center mt-1">
-                              <p className={`text-xs ${unreadCount > 0 ? 'text-indigo-300 font-semibold' : 'text-gray-400'} truncate`}>
-                                  {lastMessage?.content || (conn.status === 'pending' ? 'Request pending...' : 'No messages yet...')}
-                              </p>
-                              {unreadCount > 0 && (
-                                  <span className="bg-indigo-600 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center flex-shrink-0">
-                                      {unreadCount}
-                                  </span>
-                              )}
-                          </div>
-                      </div>
-                  </motion.div>
+                      <motion.div layout key={conn._id} initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} onClick={() => navigate(`/dashboard/chat/${otherUser._id}`)} className={`flex items-center p-2 rounded-lg cursor-pointer transition-colors duration-200 ${location.pathname.includes(otherUser._id) ? 'bg-slate-700/50' : 'hover:bg-slate-800/50'}`}>
+                        <div className="relative"><Avatar className="h-12 w-12"><AvatarImage src={otherUser.profilePhotoUrl}/><AvatarFallback>{otherUser.name.charAt(0)}</AvatarFallback></Avatar><span className={`absolute bottom-0 right-0 block h-3 w-3 rounded-full ${otherUser.isOnline ? 'bg-green-400' : 'bg-slate-500'} ring-2 ring-[#161b22]`}></span></div>
+                        <div className="flex-1 ml-3 overflow-hidden">
+                          <div className="flex justify-between items-center"><h3 className={`font-semibold truncate ${unreadCount > 0 ? 'text-white' : 'text-gray-300'}`}>{otherUser.name}</h3>{lastMessage && <p className="text-xs text-slate-400 flex-shrink-0">{format(new Date(lastMessage.createdAt), 'p')}</p>}</div>
+                          <div className="flex justify-between items-center mt-1"><p className={`text-sm ${unreadCount > 0 ? 'text-indigo-300 font-semibold' : 'text-gray-400'} truncate`}>{lastMessage?.content || (conn.status === 'pending' ? 'Request pending...' : 'No messages yet...')}</p>{unreadCount > 0 && (<span className="bg-indigo-600 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center flex-shrink-0">{unreadCount}</span>)}</div>
+                        </div>
+                      </motion.div>
                     );
                   })}
               </AnimatePresence>
@@ -259,10 +219,9 @@ const Dashboard = () => {
           </div>
       </div>
       
-     
       <main className={`
           flex-1 flex-col relative bg-[#0d1117]
-          pb-16 md:pb-0 h-full
+          pb-16 md:pb-0
           ${isDashboardHome ? 'hidden md:flex' : 'flex'}
       `}>
           <Outlet />

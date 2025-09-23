@@ -1,10 +1,10 @@
-// client/src/pages/ChatPage.jsx (FINAL - WITH ALL FIXES, INCLUDING ESLINT WARNING)
+// client/src/pages/ChatPage.jsx (UPDATED WITH UNREAD COUNT FIX)
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import { ArrowLeft, Send, Paperclip, MoreVertical, Video, Phone, UserX, Smile, PhoneIncoming, PhoneOutgoing, PhoneMissed, Check, CheckCheck, Pin, Trash2, Forward, X as CloseIcon, Search, Wallpaper, ImagePlus } from "lucide-react";
-import { motion, AnimatePresence, useAnimation } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { format, isSameDay } from 'date-fns';
 import Peer from 'simple-peer';
 import EmojiPicker from 'emoji-picker-react';
@@ -17,11 +17,10 @@ import { Input } from "../components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "../components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../components/ui/dialog";
-// <<< --- WARNING FIX YAHAN HAI: 'updateSingleMessageInChat' ko is line se hata diya gaya hai --- >>>
 import { getMessages, addMessage, updateMessage } from "../store/slices/chatSlice";
+// <<< --- YEH BADLAAV KIYA GAYA HAI (1/3): 'clearUnreadCount' ko import karein --- >>>
 import { setChatWallpaper, fetchConnections, clearUnreadCount } from "../store/slices/connectionsSlice";
-import { uploadFileToCloudinary, removeConnection, logCall, togglePinMessage, deleteMultipleMessages, forwardMessage, updateWallpaper, toggleMessageReaction } from "../utils/api";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
+import { uploadFileToCloudinary, removeConnection, logCall, togglePinMessage, deleteMultipleMessages, forwardMessage, updateWallpaper } from "../utils/api";
 
 const peerOptions = { config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }]}};
 const wallpapers = [{ name: 'Default', url: '' }, { name: 'Doodle', url: '/wallpapers/doodle.png' }, { name: 'Nature', url: '/wallpapers/nature.jpg' }, { name: 'Dark Space', url: '/wallpapers/dark-space.jpg' }, { name: 'Abstract', url: '/wallpapers/abstract.jpg' }];
@@ -113,24 +112,6 @@ const ForwardDialog = ({ connections, onForward, currentUser }) => {
     );
 };
 
-const ReactionPicker = ({ onSelect }) => {
-    const popularEmojis = ['👍', '❤️', '😂', '😯', '😢', '🙏'];
-    return (
-        <motion.div 
-            initial={{ scale: 0.5, y: 10 }}
-            animate={{ scale: 1, y: 0 }}
-            className="absolute -top-10 z-20 bg-slate-800 border border-slate-700 rounded-full flex items-center p-1 shadow-lg"
-            onClick={(e) => e.stopPropagation()}
-        >
-            {popularEmojis.map(emoji => (
-                <button key={emoji} onClick={() => onSelect(emoji)} className="text-xl p-1 rounded-full hover:bg-slate-700 transition-colors">
-                    {emoji}
-                </button>
-            ))}
-        </motion.div>
-    );
-};
-
 const ChatPage = () => {
     const { userId } = useParams();
     const navigate = useNavigate();
@@ -152,8 +133,6 @@ const ChatPage = () => {
     const [selectedMessages, setSelectedMessages] = useState(new Set());
     const [pinnedMessage, setPinnedMessage] = useState(null);
     const [isForwarding, setIsForwarding] = useState(false);
-    const [replyingTo, setReplyingTo] = useState(null);
-    const [reactingToMessageId, setReactingToMessageId] = useState(null);
     
     const [callState, setCallState] = useState('idle');
     const [callType, setCallType] = useState('video');
@@ -178,10 +157,8 @@ const ChatPage = () => {
         if (logIt && callState !== 'idle') {
             let status = 'rejected';
             if (callState === 'active') status = 'answered';
-            else if (callState === 'calling') status = 'missed';
-
+            if (callState === 'calling') status = 'missed';
             const receiverForLog = callState === 'calling' ? userId : (caller.id || null);
-            
             if (receiverForLog) { 
                 await logCall({ receiverId: receiverForLog, status, duration: callDuration });
                 dispatch(getMessages(userId));
@@ -206,33 +183,32 @@ const ChatPage = () => {
         }
     }, [callState, userId, caller.id, stream, callDuration, dispatch]);
 
-    const handleCallMade = useCallback(({ signal, from, type }) => {
-        if (callState !== 'idle') return;
-        setCaller(from);
-        setCallerSignal(signal);
-        setCallType(type);
-        setCallState('incoming');
-    }, [callState]);
-
-    const handleCallAccepted = useCallback((signal) => {
-        if (connectionRef.current) {
-            setCallState('active');
-            durationIntervalRef.current = setInterval(() => setCallDuration(prev => prev + 1), 1000);
-            connectionRef.current.signal(signal);
-        }
-    }, []);
-
-    const handleCallEnded = useCallback(() => {
-        leaveCall(false);
-    }, [leaveCall]);
-
     useEffect(() => {
         if (!currentUser || !userId) return;
 
         dispatch(getMessages(userId));
+        
+        // <<< --- YEH BADLAAV KIYA GAYA HAI (2/3): Chat khulte hi count clear karein --- >>>
         socketService.emit('mark-messages-read', { chatUserId: userId });
         dispatch(clearUnreadCount({ chatId: userId }));
         
+        const handleCallMade = ({ signal, from, type }) => {
+            setCaller(from);
+            setCallerSignal(signal);
+            setCallType(type);
+            setCallState('incoming');
+        };
+
+        const handleCallAccepted = (signal) => {
+            if (callState === 'calling' && connectionRef.current) {
+                setCallState('active');
+                durationIntervalRef.current = setInterval(() => setCallDuration(prev => prev + 1), 1000);
+                connectionRef.current.signal(signal);
+            }
+        };
+
+        const handleCallEnded = () => leaveCall(false);
+
         socketService.on("call-made", handleCallMade);
         socketService.on("call-accepted", handleCallAccepted);
         socketService.on("call-ended", handleCallEnded);
@@ -242,19 +218,18 @@ const ChatPage = () => {
             socketService.off("call-accepted", handleCallAccepted);
             socketService.off("call-ended", handleCallEnded);
         };
-    }, [userId, currentUser, dispatch, handleCallMade, handleCallAccepted, handleCallEnded]);
+    }, [userId, currentUser, dispatch, leaveCall, callState]);
 
     const callUser = (type) => {
         navigator.mediaDevices.getUserMedia({ video: type === 'video', audio: true })
             .then(stream => {
                 setStream(stream);
                 if (myVideo.current) myVideo.current.srcObject = stream;
-                
-                const peer = new Peer({ initiator: true, stream, ...peerOptions });
-                connectionRef.current = peer;
-
                 setCallState('calling');
                 setCallType(type);
+
+                const peer = new Peer({ initiator: true, stream, ...peerOptions });
+                connectionRef.current = peer;
 
                 peer.on('signal', data => {
                     socketService.emit('call-user', { 
@@ -295,16 +270,18 @@ const ChatPage = () => {
     };
     
     const toggleMute = () => {
-        if (stream?.getAudioTracks().length > 0) {
-            stream.getAudioTracks()[0].enabled = !stream.getAudioTracks()[0].enabled;
-            setIsMuted(!stream.getAudioTracks()[0].enabled);
+        if (stream && stream.getAudioTracks().length > 0) {
+            const audioTrack = stream.getAudioTracks()[0];
+            audioTrack.enabled = !audioTrack.enabled;
+            setIsMuted(!audioTrack.enabled);
         }
     };
 
     const toggleVideo = () => {
-        if (stream?.getVideoTracks().length > 0) {
-            stream.getVideoTracks()[0].enabled = !stream.getVideoTracks()[0].enabled;
-            setIsVideoOff(!stream.getVideoTracks()[0].enabled);
+        if (stream && callType === 'video' && stream.getVideoTracks().length > 0) {
+            const videoTrack = stream.getVideoTracks()[0];
+            videoTrack.enabled = !videoTrack.enabled;
+            setIsVideoOff(!videoTrack.enabled);
         }
     };
     
@@ -373,19 +350,23 @@ const ChatPage = () => {
             console.error(error);
         }
     };
-
      const handleTyping = () => {
         socketService.emit("typing", { receiverId: userId });
         if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
         typingTimeoutRef.current = setTimeout(() => { socketService.emit("stop-typing", { receiverId: userId }); }, 2000);
     };
 
+    // <<< --- YEH BADLAAV KIYA GAYA HAI (3/3): Is useEffect se 'fetchConnections' hata dein --- >>>
+    // Taki jab naya message aaye to connection list refresh na ho aur scroll position na bigde.
     useEffect(() => {
         if (currentUser && userId) {
+            // dispatch(fetchConnections(currentUser.id)); // <-- IS LINE KO COMMENT YA DELETE KAR DEIN
+            
             const handleUserTyping = ({ userId: typingUserId }) => { if (typingUserId === userId) setIsTyping(true); };
             const handleUserStopTyping = ({ userId: stopTypingUserId }) => { if (stopTypingUserId === userId) setIsTyping(false); };
             
             socketService.joinChat(userId);
+            
             socketService.onUserTyping(handleUserTyping);
             socketService.onUserStopTyping(handleUserStopTyping);
             
@@ -401,17 +382,6 @@ const ChatPage = () => {
 
     const handleEmojiClick = (emojiObject) => { setMessage(prev => prev + emojiObject.emoji); };
     
-    const handleReaction = async (messageId, emoji) => {
-        try {
-            await toggleMessageReaction(messageId, emoji);
-            // Redux update is handled by the 'message-updated' socket event
-        } catch (error) {
-            console.error("Failed to react to message", error);
-        } finally {
-            setReactingToMessageId(null);
-        }
-    };
-    
     const handleSendMessage = async (e) => {
         e.preventDefault();
         if (!message.trim() || !currentUser) return;
@@ -426,25 +396,19 @@ const ChatPage = () => {
             createdAt: new Date().toISOString(),
             status: 'sent',
             _type: 'message',
-            reactions: [],
-            replyTo: replyingTo ? { ...replyingTo, sender: { name: replyingTo.sender.name } } : null
         };
 
         dispatch(addMessage({ chatId: userId, message: optimisticMessage }));
         
         const messageToSend = message.trim();
-        const replyId = replyingTo ? replyingTo._id : null;
-
         setMessage("");
         setShowEmojiPicker(false);
-        setReplyingTo(null);
 
         try {
             socketService.emit('send-message', {
                 receiverId: userId,
                 content: messageToSend,
                 tempId: tempId,
-                replyToMessageId: replyId
             }, (ack) => {
                 if (ack.message) {
                     dispatch(updateMessage({ chatId: userId, tempId: tempId, finalMessage: ack.message }));
@@ -462,6 +426,7 @@ const ChatPage = () => {
         setIsUploading(true);
         try {
             const uploadedFile = await uploadFileToCloudinary(file);
+            
             socketService.emit('send-message', {
                 receiverId: userId,
                 content: uploadedFile.url,
@@ -477,6 +442,7 @@ const ChatPage = () => {
             
         } catch (error) { 
             alert("Failed to upload and send file.");
+            console.error(error);
         } finally { 
             setIsUploading(false); 
         }
@@ -495,95 +461,6 @@ const ChatPage = () => {
     };
 
     const formatTime = (dateString) => format(new Date(dateString), 'p');
-
-    const MessageBubble = ({ item, isSender }) => {
-        const controls = useAnimation();
-
-        const handleDragEnd = (event, info) => {
-            if (info.offset.x > 70 && !isSender) { 
-                 setReplyingTo(item);
-            } else if (info.offset.x < -70 && isSender) {
-                 setReplyingTo(item);
-            }
-            controls.start({ x: 0, transition: { type: "spring", stiffness: 300, damping: 30 } });
-        };
-        
-        return (
-             <motion.div
-                layout
-                animate={controls}
-                drag="x"
-                dragConstraints={{ left: 0, right: 0 }}
-                onDragEnd={handleDragEnd}
-                dragElastic={0.2}
-                onContextMenu={(e) => { e.preventDefault(); handleMessageLongPress(item._id); }}
-                onClick={() => handleMessageClick(item._id)}
-                className={`relative group flex items-end gap-1.5 my-0.5 rounded-lg transition-colors duration-200 ${isSender ? "justify-end" : "justify-start"} ${selectedMessages.has(item._id) ? 'bg-indigo-500/20' : ''}`}
-            >
-                {!isSender && <Avatar className="h-6 w-6 self-end"><AvatarImage src={chatUser?.profilePhotoUrl}/><AvatarFallback className="text-xs">{chatUser?.name?.charAt(0)}</AvatarFallback></Avatar>}
-                
-                 <div className={`absolute z-20 ${isSender ? 'left-0' : 'right-0'}`}>
-                    {reactingToMessageId === item._id && <ReactionPicker onSelect={(emoji) => handleReaction(item._id, emoji)} />}
-                </div>
-
-                <div className="flex flex-col">
-                    <div className={`relative message-bubble max-w-xs md:max-w-md rounded-xl ${isSender ? "bg-indigo-600 sent" : "bg-[#2a2a36] received"}`}>
-                        {item.replyTo && (
-                            <div className="p-2 m-1 border-l-2 border-indigo-300 bg-black/20 rounded-md cursor-pointer">
-                                <p className="font-bold text-xs text-indigo-300">{item.replyTo.sender.name}</p>
-                                <p className="text-xs text-slate-300/80 truncate">
-                                    {item.replyTo.messageType === 'image' ? '📷 Photo' : item.replyTo.content}
-                                </p>
-                            </div>
-                        )}
-                        
-                        {item.messageType === 'image' ? (
-                            <a href={item.content} target="_blank" rel="noopener noreferrer" className="block p-1">
-                                <img src={item.content} alt="Sent" className="max-w-xs md:max-w-sm h-auto rounded-lg" />
-                            </a>
-                        ) : item.messageType === 'file' ? (
-                            <a href={item.content} target="_blank" rel="noopener noreferrer" download={item.fileName || 'file'} className="flex items-center gap-3 p-3 text-white hover:underline bg-slate-700/50 rounded-lg">
-                                <Paperclip className="h-8 w-8 flex-shrink-0 text-slate-400" />
-                                <div className="overflow-hidden">
-                                    <p className="font-semibold truncate">{item.fileName || 'Attached File'}</p>
-                                    <p className="text-xs text-slate-300">{item.fileSize ? `${(item.fileSize / 1024).toFixed(2)} KB` : ''}</p>
-                                </div>
-                            </a>
-                        ) : (
-                            <p className="px-2.5 py-1.5 text-sm break-words text-white">{item.content}</p>
-                        )}
-                        
-                        <span className="text-[10px] opacity-70 float-right mr-2 mb-1 self-end text-white/70 flex items-center">{formatTime(item.createdAt)}{isSender && <MessageStatus status={item.status} />}</span>
-
-                        <button 
-                            onClick={(e) => { e.stopPropagation(); setReactingToMessageId(prevId => prevId === item._id ? null : item._id); }}
-                            className={`absolute -top-3 ${isSender ? 'left-1' : 'right-1'} p-1 rounded-full bg-slate-700 opacity-0 group-hover:opacity-100 transition-opacity`}
-                        >
-                            <Smile className="h-4 w-4 text-slate-300"/>
-                        </button>
-                    </div>
-
-                    {item.reactions && item.reactions.length > 0 && (
-                        <div className={`flex gap-1 mt-1 ${isSender ? 'justify-end' : 'justify-start'}`}>
-                            {Object.entries(item.reactions.reduce((acc, r) => ({...acc, [r.emoji]: (acc[r.emoji] || 0) + 1}), {})).map(([emoji, count]) => (
-                               <TooltipProvider key={emoji}><Tooltip>
-                                <TooltipTrigger>
-                                 <div className="bg-slate-700/50 rounded-full px-2 py-0.5 text-xs flex items-center gap-1 cursor-pointer" onClick={() => handleReaction(item._id, emoji)}>
-                                    <span>{emoji}</span>
-                                    {count > 1 && <span className="text-slate-300 font-semibold">{count}</span>}
-                                 </div>
-                                </TooltipTrigger>
-                                <TooltipContent className="bg-slate-800 border-slate-700 text-white">
-                                    <p>{item.reactions.filter(r => r.emoji === emoji).map(r => r.user.name).join(', ')}</p>
-                                </TooltipContent>
-                               </Tooltip></TooltipProvider>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            </motion.div>
-        );
-    };
 
     if (!currentUser || !chatUser) {
         return <div className="h-full w-full flex items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-indigo-500"></div></div>;
@@ -663,7 +540,7 @@ const ChatPage = () => {
                 )}
             </header>
             
-            <div className="relative overflow-hidden" onClick={() => setReactingToMessageId(null)}>
+            <div className="relative overflow-hidden">
                 {pinnedMessage && !selectionMode && (<motion.div initial={{y: -50}} animate={{y: 0}} className="absolute top-0 left-0 right-0 p-2 bg-slate-800/80 backdrop-blur-sm flex items-center gap-2 text-sm text-slate-300 border-b border-slate-700 z-20"><Pin className="h-4 w-4 text-indigo-400 flex-shrink-0" /><p className="truncate flex-1">{pinnedMessage.content}</p><Button variant="ghost" size="icon" className="h-6 w-6" onClick={async () => { await togglePinMessage(pinnedMessage._id); dispatch(getMessages(userId)); }}><CloseIcon className="h-4 w-4" /></Button></motion.div>)}
                 
                 <div className="absolute inset-0 z-0">
@@ -689,11 +566,31 @@ const ChatPage = () => {
                                 return (<div key={item._id || index}>{showDateHeader && (<div className="text-center text-xs text-slate-500 my-4 bg-slate-800/50 self-center px-3 py-1 rounded-full">{format(new Date(item.createdAt), 'MMMM d, yyyy')}</div>)}<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center justify-center my-3"><div className="flex items-center gap-2 text-sm text-slate-400 bg-slate-800/60 px-3 py-1.5 rounded-lg"><Icon className={`h-4 w-4 ${item.status === 'missed' || item.status === 'rejected' ? 'text-red-400' : 'text-slate-500'}`} /><span>{text}</span><span>•</span><span>{callTime}</span></div></motion.div></div>);
                             }
                             const isSender = item.sender?._id === currentUser.id;
-                            
+                            const isSelected = selectedMessages.has(item._id);
                             return (
-                                <div key={item._id || index}>
+                                <div key={item._id || index} onContextMenu={(e) => { e.preventDefault(); handleMessageLongPress(item._id); }}>
                                     {showDateHeader && (<div className="text-center text-xs text-slate-500 my-4 bg-slate-800/50 self-center px-3 py-1 rounded-full">{format(new Date(item.createdAt), 'MMMM d, yyyy')}</div>)}
-                                    <MessageBubble item={item} isSender={isSender} />
+                                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} onClick={() => handleMessageClick(item._id)} className={`flex items-end gap-1.5 my-0.5 rounded-lg transition-colors duration-200 ${isSender ? "justify-end" : "justify-start"} ${isSelected ? 'bg-indigo-500/20' : ''}`}>
+                                        {!isSender && <Avatar className="h-6 w-6 self-end"><AvatarImage src={chatUser?.profilePhotoUrl}/><AvatarFallback className="text-xs">{chatUser?.name?.charAt(0)}</AvatarFallback></Avatar>}
+                                        <div className={`message-bubble max-w-[40%] md:max-w-[25%] rounded-xl ${isSender ? "bg-indigo-600 sent" : "bg-[#2a2a36] received"}`}>
+                                            {item.messageType === 'image' ? (
+                                                <a href={item.content} target="_blank" rel="noopener noreferrer" className="block p-1">
+                                                    <img src={item.content} alt="Sent" className="max-w-xs md:max-w-sm h-auto rounded-lg" />
+                                                </a>
+                                            ) : item.messageType === 'file' ? (
+                                                <a href={item.content} target="_blank" rel="noopener noreferrer" download={item.fileName || 'file'} className="flex items-center gap-3 p-3 text-white hover:underline bg-slate-700/50 rounded-lg">
+                                                    <Paperclip className="h-8 w-8 flex-shrink-0 text-slate-400" />
+                                                    <div className="overflow-hidden">
+                                                        <p className="font-semibold truncate">{item.fileName || 'Attached File'}</p>
+                                                        <p className="text-xs text-slate-300">{item.fileSize ? `${(item.fileSize / 1024).toFixed(2)} KB` : ''}</p>
+                                                    </div>
+                                                </a>
+                                            ) : (
+                                                <p className="px-2.5 py-1.5 text-sm break-words text-white">{item.content}</p>
+                                            )}
+                                            <span className="text-[10px] opacity-70 float-right mr-2 mb-1 self-end text-white/70 flex items-center">{formatTime(item.createdAt)}{isSender && <MessageStatus status={item.status} />}</span>
+                                        </div>
+                                    </motion.div>
                                 </div>
                             );
                         })}
@@ -703,34 +600,12 @@ const ChatPage = () => {
             </div>
             
             <footer className="p-1.5 border-t border-slate-800 bg-slate-900/70 backdrop-blur-lg z-20 relative">
-                <AnimatePresence>
-                    {replyingTo && (
-                        <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            className="bg-slate-800 p-2 mx-1 rounded-t-lg border-b border-slate-700"
-                        >
-                            <div className="flex justify-between items-center">
-                                <div className="border-l-2 border-indigo-400 pl-2 text-xs">
-                                    <p className="font-bold text-indigo-400">Replying to {replyingTo.sender.name}</p>
-                                    <p className="text-slate-400 truncate max-w-xs">
-                                        {replyingTo.messageType === 'image' ? '📷 Photo' : replyingTo.content}
-                                    </p>
-                                </div>
-                                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setReplyingTo(null)}>
-                                    <CloseIcon className="h-4 w-4" />
-                                </Button>
-                            </div>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
                 <AnimatePresence>{showEmojiPicker && ( <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute bottom-[52px] left-2 z-30"><EmojiPicker onEmojiClick={handleEmojiClick} theme="dark" lazyLoadEmojis={true} /></motion.div>)}</AnimatePresence>
                 <form onSubmit={handleSendMessage} className="flex items-center gap-1.5">
                     <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
                     <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-gray-400 hover:text-white flex-shrink-0" onClick={() => fileInputRef.current.click()} disabled={isUploading}><Paperclip className="h-4 w-4" /></Button>
                     <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-gray-400 hover:text-white flex-shrink-0" onClick={() => setShowEmojiPicker(!showEmojiPicker)}><Smile className="h-4 w-4" /></Button>
-                    <Input value={message} onChange={(e) => { setMessage(e.target.value); handleTyping(); }} placeholder="Message..." className="flex-1 h-9 bg-slate-800 border-slate-700 rounded-full px-4 text-sm" onFocus={() => {setShowEmojiPicker(false); setReactingToMessageId(null);}} />
+                    <Input value={message} onChange={(e) => { setMessage(e.target.value); handleTyping(); }} placeholder="Message..." className="flex-1 h-9 bg-slate-800 border-slate-700 rounded-full px-4 text-sm" onFocus={() => setShowEmojiPicker(false)} />
                     <Button type="submit" size="icon" className="h-9 w-9 bg-indigo-600 hover:bg-indigo-500 rounded-full flex-shrink-0" disabled={!message.trim() || isUploading}>
                         {isUploading ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div> : <Send className="h-4 w-4" />}
                     </Button>

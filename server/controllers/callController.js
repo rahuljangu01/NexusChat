@@ -1,4 +1,4 @@
-// server/controllers/callController.js (FINAL & PERMANENT FIX)
+// server/controllers/callController.js (FINAL & COMPLETE CODE)
 
 const CallRecord = require("../models/CallRecord");
 const Group = require("../models/Group");
@@ -8,8 +8,8 @@ exports.logCall = async (req, res) => {
     const { receiverId, groupId, status, duration } = req.body;
     const callerId = req.user.id;
 
-    // --- PERMANENT FIX FOR DUPLICATES ---
-    // Check if a similar call was logged in the last 5 seconds.
+    // --- PERMANENT FIX FOR DUPLICATE CALL LOGS ---
+    // Check if a similar call was logged in the last 5 seconds to prevent duplicates.
     const fiveSecondsAgo = new Date(Date.now() - 5000);
     
     let existingCall;
@@ -26,9 +26,10 @@ exports.logCall = async (req, res) => {
       });
     }
 
-    // If a recent call exists, do not log a new one.
+    // If a recent, similar call exists, do not log a new one.
     if (existingCall) {
-      return res.status(200).json({ success: true, message: "Call already logged.", call: existingCall });
+      console.log("Duplicate call log attempt ignored.");
+      return res.status(200).json({ success: true, message: "Call already logged recently.", call: existingCall });
     }
     // --- END OF FIX ---
 
@@ -89,12 +90,15 @@ exports.deleteCallRecord = async (req, res) => {
   try {
     const { callId } = req.params;
     const result = await CallRecord.findOneAndDelete({ _id: callId, users: req.user.id });
+    
     if (!result) {
-      return res.status(404).json({ message: "Call record not found or you are not authorized." });
+      return res.status(404).json({ message: "Call record not found or you are not authorized to delete it." });
     }
+    
     res.status(200).json({ success: true, message: "Call record deleted." });
   } catch (error) {
-    res.status(500).json({ message: "Server error." });
+    console.error("Error deleting call record:", error);
+    res.status(500).json({ message: "Server error while deleting call record." });
   }
 };
 
@@ -103,6 +107,7 @@ exports.clearCallHistory = async (req, res) => {
     await CallRecord.deleteMany({ users: req.user.id });
     res.status(200).json({ success: true, message: "Call history cleared." });
   } catch (error) {
-    res.status(500).json({ message: "Server error." });
+    console.error("Error clearing call history:", error);
+    res.status(500).json({ message: "Server error while clearing call history." });
   }
 };
