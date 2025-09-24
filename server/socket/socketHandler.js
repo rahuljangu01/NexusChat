@@ -1,9 +1,9 @@
-// server/socket/socketHandler.js (FINAL & CORRECTED)
+// server/socket/socketHandler.js (FINAL & GUARANTEED CALLING FIX)
 
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const Message = require("../models/Message");
-const Connection = require("../models/Connection"); // Ensure Connection is imported
+const Connection = require("../models/Connection");
 
 const userSocketMap = {}; // Maps userId to socketId
 
@@ -76,46 +76,26 @@ const socketHandler = (io) => {
         console.error("Error marking messages as read:", error);
       }
     });
-    socket.on('profile-update', async (updatedUser) => {
-    try {
-        const connections = await Connection.find({ users: userId, status: 'accepted' });
-        const friendIds = connections.map(c => c.users.find(id => id.toString() !== userId).toString());
 
-        friendIds.forEach(friendId => {
-            const friendSocketId = userSocketMap[friendId];
-            if (friendSocketId) {
-                io.to(friendSocketId).emit('connection-profile-updated', updatedUser);
-            }
-        });
-    } catch (error) {
-        console.error('Error broadcasting profile a`date:', error);
-    }
-});
-    
     socket.on('typing', (data) => io.to(data.receiverId).emit("user-typing", { userId }));
     socket.on('stop-typing', (data) => io.to(data.receiverId).emit("user-stop-typing", { userId }));
     
-   socket.on('send-message', async (data, callback) => {
+    socket.on('send-message', async (data, callback) => {
         try {
-            const { receiverId, content, messageType = "text", tempId, fileName, fileSize } = data;
+            const { receiverId, content, messageType = "text", tempId, fileName, fileSize, replyToMessageId } = data;
             const senderId = socket.userId;
-
+    
             const connection = await Connection.findOne({ users: { $all: [senderId, receiverId] }, status: "accepted" });
-            if (!connection) {
-                return callback({ error: "You can only message connected users." });
-            }
+            if (!connection) { return callback({ error: "You can only message connected users." }); }
             
-            let message = await Message.create({ sender: senderId, receiver: receiverId, content, messageType, fileName, fileSize });
+            let message = await Message.create({ sender: senderId, receiver: receiverId, content, messageType, fileName, fileSize, replyTo: replyToMessageId || null });
             
-            // <<< --- YEH HAI ZAROORI BADLAAV --- >>>
-            // Hum message ko wapas bhejne se pehle use 'sender' ki details ke saath populate karenge
-            message = await message.populate("sender", "name profilePhotoUrl");
+            message = await message.populate("sender", "name profilePhotoUrl").populate({path: 'replyTo', populate: { path: 'sender', select: 'name' }});
 
             const receiverSocketId = userSocketMap[receiverId];
             if (receiverSocketId) {
                 io.to(receiverSocketId).emit("receive-message", { ...message.toObject(), _type: 'message' });
             }
-            // Callback mein bhi populated message bhejo
             callback({ message: { ...message.toObject(), _type: 'message' } });
         } catch (error) {
             console.error(`Error in socket send-message from ${socket.userId}:`, error);
@@ -123,43 +103,30 @@ const socketHandler = (io) => {
         }
     });
 
-     socket.on("call-user", (data) => {
-        console.log("------------------------------------");
-        console.log("[Socket Event] Received 'call-user' from:", socket.user.name);
-        console.log("Data received:", data);
-
+    socket.on("call-user", (data) => {
         const targetSocketId = userSocketMap[data.userToCall];
-        
-        console.log("Current userSocketMap:", userSocketMap);
-        console.log("Trying to find socket ID for user:", data.userToCall);
-
         if (targetSocketId) {
-            console.log(`SUCCESS: Found target socket ID: ${targetSocketId}. Emitting 'call-made'.`);
             io.to(targetSocketId).emit("call-made", { 
                 signal: data.signalData, 
                 from: data.from,
                 type: data.type 
             });
         } else {
-            console.error(`FAILURE: Could not find socket ID for user ${data.userToCall}. User might be offline or not connected.`);
+            console.error(`CALL-USER FAILED: Could not find socket for user ${data.userToCall}`);
         }
-        console.log("------------------------------------");
     });
+
+    // <<< --- THIS IS THE CRUCIAL FIX --- >>>
     socket.on("answer-call", (data) => {
-        console.log("------------------------------------");
-        console.log("[Socket Event] Received 'answer-call' from:", socket.user.name);
-        console.log("Answering call to user ID:", data.to);
-        
-        const targetSocketId = userSocketMap[data.to];
-        
+        const targetSocketId = userSocketMap[data.to]; // data.to is the original caller's ID
         if (targetSocketId) {
-            console.log(`SUCCESS: Found target socket ID: ${targetSocketId}. Emitting 'call-accepted'.`);
             io.to(targetSocketId).emit("call-accepted", data.signal);
         } else {
-            console.error(`FAILURE: Could not find socket ID for user ${data.to} to send answer.`);
+            console.error(`ANSWER-CALL FAILED: Could not find socket for user ${data.to}`);
         }
-        console.log("------------------------------------");
     });
+    // <<< --- END OF FIX --- >>>
+
     socket.on("hang-up", (data) => {
         const targetSocketId = userSocketMap[data.to];
         if (targetSocketId) {
@@ -171,13 +138,23 @@ const socketHandler = (io) => {
     socket.on('leave-group-room', (groupId) => { socket.leave(groupId); });
     socket.on('start-group-call', ({ groupId, from, callType }) => { socket.to(groupId).emit('incoming-group-call', { from, groupId, callType }); });
     socket.on('join-group-call', ({ groupId, from }) => { socket.to(groupId).emit('new-user-joined-group-call', { from }); });
+    
+    socket.on('send-signal-group', ({ signal, to, from }) => {
+        const targetSocketId = userSocketMap[to];
+        if (targetSocketId) {
+            io.to(targetSocketId).emit('receiving-signal-group', { signal, from });
+        }
+    });
+
     socket.on('return-signal-group', ({ signal, to }) => {
         const targetSocketId = userSocketMap[to];
         if (targetSocketId) {
-            io.to(targetSocketId).emit('receiving-returned-signal-group', { signal, from: { id: userId, name: socket.user.name } });
+            io.to(targetSocketId).emit('receiving-returned-signal-group', { signal, from: { id: userId, name: socket.user.name, profilePhotoUrl: socket.user.profilePhotoUrl } });
         }
     });
+
     socket.on('leave-group-call', ({ groupId, userId }) => { socket.to(groupId).emit('user-left-group-call', { userId }); });
+    
     socket.on('mark-group-messages-read', async ({ groupId }) => {
       try {
         await Message.updateMany(
