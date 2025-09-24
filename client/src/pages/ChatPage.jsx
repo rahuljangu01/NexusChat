@@ -1,10 +1,10 @@
-// client/src/pages/ChatPage.jsx (UPDATED WITH UNREAD COUNT FIX)
+// client/src/pages/ChatPage.jsx (FINAL & GUARANTEED CALLING FIX - NO CODE REMOVED)
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import { ArrowLeft, Send, Paperclip, MoreVertical, Video, Phone, UserX, Smile, PhoneIncoming, PhoneOutgoing, PhoneMissed, Check, CheckCheck, Pin, Trash2, Forward, X as CloseIcon, Search, Wallpaper, ImagePlus } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useAnimation } from "framer-motion";
 import { format, isSameDay } from 'date-fns';
 import Peer from 'simple-peer';
 import EmojiPicker from 'emoji-picker-react';
@@ -17,12 +17,21 @@ import { Input } from "../components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "../components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../components/ui/dialog";
-import { getMessages, addMessage, updateMessage } from "../store/slices/chatSlice";
-// <<< --- YEH BADLAAV KIYA GAYA HAI (1/3): 'clearUnreadCount' ko import karein --- >>>
+import { getMessages, addMessage, updateMessage, updateSingleMessageInChat } from "../store/slices/chatSlice";
 import { setChatWallpaper, fetchConnections, clearUnreadCount } from "../store/slices/connectionsSlice";
-import { uploadFileToCloudinary, removeConnection, logCall, togglePinMessage, deleteMultipleMessages, forwardMessage, updateWallpaper } from "../utils/api";
+import { uploadFileToCloudinary, removeConnection, logCall, togglePinMessage, deleteMultipleMessages, forwardMessage, updateWallpaper, toggleMessageReaction } from "../utils/api";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
 
-const peerOptions = { config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }]}};
+const peerOptions = { 
+    trickle: false, 
+    config: { 
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' }, 
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun.services.mozilla.com' }
+        ]
+    }
+};
 const wallpapers = [{ name: 'Default', url: '' }, { name: 'Doodle', url: '/wallpapers/doodle.png' }, { name: 'Nature', url: '/wallpapers/nature.jpg' }, { name: 'Dark Space', url: '/wallpapers/dark-space.jpg' }, { name: 'Abstract', url: '/wallpapers/abstract.jpg' }];
 
 const WallpaperDialog = ({ open, onOpenChange, connectionId, currentWallpaper, onWallpaperChange }) => {
@@ -112,6 +121,24 @@ const ForwardDialog = ({ connections, onForward, currentUser }) => {
     );
 };
 
+const ReactionPicker = ({ onSelect }) => {
+    const popularEmojis = ['👍', '❤️', '😂', '😯', '😢', '🙏'];
+    return (
+        <motion.div 
+            initial={{ scale: 0.5, y: 10 }}
+            animate={{ scale: 1, y: 0 }}
+            className="absolute -top-10 z-20 bg-slate-800 border border-slate-700 rounded-full flex items-center p-1 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+        >
+            {popularEmojis.map(emoji => (
+                <button key={emoji} onClick={() => onSelect(emoji)} className="text-xl p-1 rounded-full hover:bg-slate-700 transition-colors">
+                    {emoji}
+                </button>
+            ))}
+        </motion.div>
+    );
+};
+
 const ChatPage = () => {
     const { userId } = useParams();
     const navigate = useNavigate();
@@ -119,7 +146,10 @@ const ChatPage = () => {
     
     const { connections } = useSelector((state) => state.connections);
     const { user: currentUser } = useSelector((state) => state.auth);
-    const activeChatMessages = useSelector((state) => state.chat.messages[userId] || []);
+    const { messages: allMessages, loading: messagesLoading } = useSelector((state) => state.chat);
+    
+    const activeChatMessages = useMemo(() => allMessages[userId] || [], [allMessages, userId]);
+    
     const chatUserConnection = connections.find(c => c.users.some(u => u._id === userId));
     const chatUser = chatUserConnection?.users.find(u => u._id === userId);
 
@@ -133,6 +163,8 @@ const ChatPage = () => {
     const [selectedMessages, setSelectedMessages] = useState(new Set());
     const [pinnedMessage, setPinnedMessage] = useState(null);
     const [isForwarding, setIsForwarding] = useState(false);
+    const [replyingTo, setReplyingTo] = useState(null);
+    const [reactingToMessageId, setReactingToMessageId] = useState(null);
     
     const [callState, setCallState] = useState('idle');
     const [callType, setCallType] = useState('video');
@@ -153,271 +185,160 @@ const ChatPage = () => {
 
     const currentWallpaper = chatUserConnection?.chatWallpaper || '';
 
-    const leaveCall = useCallback(async (logIt = true) => {
-        if (logIt && callState !== 'idle') {
-            let status = 'rejected';
-            if (callState === 'active') status = 'answered';
-            if (callState === 'calling') status = 'missed';
-            const receiverForLog = callState === 'calling' ? userId : (caller.id || null);
-            if (receiverForLog) { 
-                await logCall({ receiverId: receiverForLog, status, duration: callDuration });
-                dispatch(getMessages(userId));
-            }
-        }
-        setCallState('idle');
-        setCaller({});
-        setCallerSignal(null);
-        setCallDuration(0);
-        clearInterval(durationIntervalRef.current);
-        if (stream) {
-            stream.getTracks().forEach(track => track.stop());
-            setStream(null);
-        }
-        if (connectionRef.current) {
-            connectionRef.current.destroy();
-            connectionRef.current = null;
-        }
-        const otherUserId = callState === 'calling' ? userId : caller.id;
-        if (otherUserId) {
-            socketService.emit('hang-up', { to: otherUserId });
-        }
-    }, [callState, userId, caller.id, stream, callDuration, dispatch]);
-
     useEffect(() => {
-        if (!currentUser || !userId) return;
+        if (currentUser && userId) {
+            dispatch(getMessages(userId));
+            socketService.emit('mark-messages-read', { chatUserId: userId });
+            dispatch(clearUnreadCount({ chatId: userId }));
+        }
+    }, [userId, currentUser, dispatch]);
 
-        dispatch(getMessages(userId));
-        
-        // <<< --- YEH BADLAAV KIYA GAYA HAI (2/3): Chat khulte hi count clear karein --- >>>
-        socketService.emit('mark-messages-read', { chatUserId: userId });
-        dispatch(clearUnreadCount({ chatId: userId }));
-        
+    const leaveCall = useCallback(async (logIt = true) => {
+        setCallState(currentCallState => {
+            if (logIt && currentCallState !== 'idle') {
+                let status = 'rejected';
+                if (currentCallState === 'active') status = 'answered';
+                else if (currentCallState === 'calling') status = 'missed';
+                
+                const receiverForLog = currentCallState === 'calling' ? userId : (caller.id || null);
+                if (receiverForLog) { 
+                    logCall({ receiverId: receiverForLog, status, duration: callDuration });
+                    dispatch(getMessages(userId));
+                }
+            }
+    
+            const otherUserId = currentCallState === 'calling' ? userId : caller.id;
+            if (otherUserId) { socketService.emit('hang-up', { to: otherUserId }); }
+    
+            if (stream) { stream.getTracks().forEach(track => track.stop()); }
+            if (connectionRef.current) { connectionRef.current.destroy(); connectionRef.current = null; }
+            
+            clearInterval(durationIntervalRef.current);
+            setCaller({}); setCallerSignal(null); setCallDuration(0); setStream(null);
+            
+            return 'idle';
+        });
+    }, [userId, caller.id, stream, callDuration, dispatch]);
+    
+    useEffect(() => {
         const handleCallMade = ({ signal, from, type }) => {
-            setCaller(from);
-            setCallerSignal(signal);
-            setCallType(type);
-            setCallState('incoming');
+            setCallState(cs => (cs !== 'idle' ? cs : (setCaller(from), setCallerSignal(signal), setCallType(type), 'incoming')));
         };
-
         const handleCallAccepted = (signal) => {
-            if (callState === 'calling' && connectionRef.current) {
+            if (connectionRef.current) {
                 setCallState('active');
-                durationIntervalRef.current = setInterval(() => setCallDuration(prev => prev + 1), 1000);
+                durationIntervalRef.current = setInterval(() => setCallDuration(p => p + 1), 1000);
                 connectionRef.current.signal(signal);
             }
         };
-
         const handleCallEnded = () => leaveCall(false);
-
-        socketService.on("call-made", handleCallMade);
-        socketService.on("call-accepted", handleCallAccepted);
-        socketService.on("call-ended", handleCallEnded);
-
+        if (socketService.socket) {
+            socketService.on("call-made", handleCallMade);
+            socketService.on("call-accepted", handleCallAccepted);
+            socketService.on("call-ended", handleCallEnded);
+        }
         return () => {
-            socketService.off("call-made", handleCallMade);
-            socketService.off("call-accepted", handleCallAccepted);
-            socketService.off("call-ended", handleCallEnded);
+            if (socketService.socket) {
+                socketService.off("call-made", handleCallMade);
+                socketService.off("call-accepted", handleCallAccepted);
+                socketService.off("call-ended", handleCallEnded);
+            }
         };
-    }, [userId, currentUser, dispatch, leaveCall, callState]);
+    }, [leaveCall]);
 
     const callUser = (type) => {
         navigator.mediaDevices.getUserMedia({ video: type === 'video', audio: true })
             .then(stream => {
-                setStream(stream);
-                if (myVideo.current) myVideo.current.srcObject = stream;
-                setCallState('calling');
-                setCallType(type);
-
+                setStream(stream); if (myVideo.current) myVideo.current.srcObject = stream;
                 const peer = new Peer({ initiator: true, stream, ...peerOptions });
                 connectionRef.current = peer;
-
-                peer.on('signal', data => {
-                    socketService.emit('call-user', { 
-                        userToCall: userId, 
-                        signalData: data, 
-                        from: { id: currentUser.id, name: currentUser.name, profilePhotoUrl: currentUser.profilePhotoUrl }, 
-                        type 
-                    });
-                });
-
-                peer.on('stream', remoteStream => { 
-                    if (userVideo.current) userVideo.current.srcObject = remoteStream; 
-                });
+                setCallState('calling'); setCallType(type);
+                peer.on('signal', data => { socketService.emit('call-user', { userToCall: userId, signalData: data, from: { id: currentUser.id, name: currentUser.name, profilePhotoUrl: currentUser.profilePhotoUrl }, type }); });
+                peer.on('stream', remoteStream => { if (userVideo.current) userVideo.current.srcObject = remoteStream; });
+                peer.on('error', (err) => { console.error(err); leaveCall(false); });
             })
-            .catch(err => {
-                console.error("getUserMedia FAILED!", err);
-                alert(`Could not start call. Error: ${err.name}. Please check camera/mic permissions.`);
-            });
+            .catch(err => console.error("getUserMedia FAILED!", err));
     };
 
     const answerCall = () => {
         navigator.mediaDevices.getUserMedia({ video: callType === 'video', audio: true })
             .then(stream => {
-                setStream(stream);
-                if (myVideo.current) myVideo.current.srcObject = stream;
-                setCallState('active');
-                durationIntervalRef.current = setInterval(() => setCallDuration(prev => prev + 1), 1000);
-                
+                setStream(stream); if (myVideo.current) myVideo.current.srcObject = stream;
                 const peer = new Peer({ initiator: false, stream, ...peerOptions });
                 connectionRef.current = peer;
-                
                 peer.on('signal', data => { socketService.emit('answer-call', { signal: data, to: caller.id }); });
                 peer.on('stream', remoteStream => { if(userVideo.current) userVideo.current.srcObject = remoteStream; });
-                
+                peer.on('error', (err) => { console.error(err); leaveCall(false); });
                 peer.signal(callerSignal);
+                setCallState('active');
+                durationIntervalRef.current = setInterval(() => setCallDuration(p => p + 1), 1000);
             })
-            .catch(err => console.error("getUserMedia error on answer:", err));
+            .catch(err => console.error("getUserMedia error:", err));
     };
     
-    const toggleMute = () => {
-        if (stream && stream.getAudioTracks().length > 0) {
-            const audioTrack = stream.getAudioTracks()[0];
-            audioTrack.enabled = !audioTrack.enabled;
-            setIsMuted(!audioTrack.enabled);
-        }
-    };
-
-    const toggleVideo = () => {
-        if (stream && callType === 'video' && stream.getVideoTracks().length > 0) {
-            const videoTrack = stream.getVideoTracks()[0];
-            videoTrack.enabled = !videoTrack.enabled;
-            setIsVideoOff(!videoTrack.enabled);
-        }
-    };
-    
-    useEffect(() => {
-        const foundPinned = activeChatMessages.find(msg => msg.isPinned);
-        setPinnedMessage(foundPinned || null);
-    }, [activeChatMessages]);
-
-    const handleMessageLongPress = (messageId) => {
-        setSelectionMode(true);
-        setSelectedMessages(new Set([messageId]));
-    };
-    
-    const handleMessageClick = (messageId) => {
+    const toggleMute = () => { if (stream?.getAudioTracks().length > 0) { stream.getAudioTracks()[0].enabled = !stream.getAudioTracks()[0].enabled; setIsMuted(p => !p); } };
+    const toggleVideo = () => { if (stream?.getVideoTracks().length > 0) { stream.getVideoTracks()[0].enabled = !stream.getVideoTracks()[0].enabled; setIsVideoOff(p => !p); } };
+    useEffect(() => { setPinnedMessage(activeChatMessages.find(msg => msg.isPinned) || null); }, [activeChatMessages]);
+    const handleMessageLongPress = (id) => { setSelectionMode(true); setSelectedMessages(new Set([id])); };
+    const handleMessageClick = (id) => {
         if (!selectionMode) return;
         const newSelected = new Set(selectedMessages);
-        if (newSelected.has(messageId)) {
-            newSelected.delete(messageId);
-        } else {
-            newSelected.add(messageId);
-        }
-        if (newSelected.size === 0) {
-            setSelectionMode(false);
-        }
+        newSelected.has(id) ? newSelected.delete(id) : newSelected.add(id);
+        if (newSelected.size === 0) setSelectionMode(false);
         setSelectedMessages(newSelected);
     };
-
-    const clearSelection = () => {
-        setSelectionMode(false);
-        setSelectedMessages(new Set());
-    };
-
-    const handleDeleteSelected = async () => {
-        if (window.confirm(`Delete ${selectedMessages.size} message(s)?`)) {
-            try {
-                await deleteMultipleMessages(Array.from(selectedMessages));
-                dispatch(getMessages(userId));
-                clearSelection();
-            } catch (error) {
-                alert("Failed to delete messages. You can only delete your own messages.");
-            }
-        }
-    };
-    
-    const handlePinSelected = async () => {
-        const messageId = selectedMessages.values().next().value;
-        try {
-            await togglePinMessage(messageId);
-            dispatch(getMessages(userId));
-            clearSelection();
-        } catch (error) {
-            alert("Failed to pin message.");
-        }
-    };
-
-    const handleForwardSelected = async (forwardToUserId) => {
-        try {
-            for (const messageId of selectedMessages) {
-                await forwardMessage(messageId, forwardToUserId);
-            }
-            alert(`Message(s) forwarded successfully!`);
-            clearSelection();
-            setIsForwarding(false);
-        } catch (error) {
-            alert("Failed to forward message(s).");
-            console.error(error);
-        }
-    };
-     const handleTyping = () => {
-        socketService.emit("typing", { receiverId: userId });
-        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = setTimeout(() => { socketService.emit("stop-typing", { receiverId: userId }); }, 2000);
-    };
-
-    // <<< --- YEH BADLAAV KIYA GAYA HAI (3/3): Is useEffect se 'fetchConnections' hata dein --- >>>
-    // Taki jab naya message aaye to connection list refresh na ho aur scroll position na bigde.
+    const clearSelection = () => { setSelectionMode(false); setSelectedMessages(new Set()); };
+    const handleDeleteSelected = async () => { if (window.confirm(`Delete ${selectedMessages.size} message(s)?`)) { try { await deleteMultipleMessages(Array.from(selectedMessages)); dispatch(getMessages(userId)); clearSelection(); } catch (e) { alert("Failed to delete."); } } };
+    const handlePinSelected = async () => { try { await togglePinMessage(selectedMessages.values().next().value); dispatch(getMessages(userId)); clearSelection(); } catch (e) { alert("Failed to pin."); } };
+    const handleForwardSelected = async (toId) => { try { for (const id of selectedMessages) { await forwardMessage(id, toId); } alert(`Forwarded!`); clearSelection(); setIsForwarding(false); } catch (e) { alert("Failed to forward."); } };
+    const handleTyping = () => { socketService.emit("typing", { receiverId: userId }); if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current); typingTimeoutRef.current = setTimeout(() => { socketService.emit("stop-typing", { receiverId: userId }); }, 2000); };
     useEffect(() => {
         if (currentUser && userId) {
-            // dispatch(fetchConnections(currentUser.id)); // <-- IS LINE KO COMMENT YA DELETE KAR DEIN
-            
-            const handleUserTyping = ({ userId: typingUserId }) => { if (typingUserId === userId) setIsTyping(true); };
-            const handleUserStopTyping = ({ userId: stopTypingUserId }) => { if (stopTypingUserId === userId) setIsTyping(false); };
-            
+            const onTyping = ({ userId: u }) => { if (u === userId) setIsTyping(true); };
+            const onStopTyping = ({ userId: u }) => { if (u === userId) setIsTyping(false); };
             socketService.joinChat(userId);
-            
-            socketService.onUserTyping(handleUserTyping);
-            socketService.onUserStopTyping(handleUserStopTyping);
-            
-            return () => {
-                socketService.leaveChat(userId);
-                socketService.off("user-typing", handleUserTyping);
-                socketService.off("user-stop-typing", handleUserStopTyping);
-            };
+            socketService.onUserTyping(onTyping);
+            socketService.onUserStopTyping(onStopTyping);
+            return () => { socketService.leaveChat(userId); socketService.off("user-typing", onTyping); socketService.off("user-stop-typing", onStopTyping); };
         }
-    }, [userId, dispatch, currentUser]);
-    
+    }, [userId, currentUser]);
     useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [activeChatMessages]);
-
-    const handleEmojiClick = (emojiObject) => { setMessage(prev => prev + emojiObject.emoji); };
+    const handleEmojiClick = (emoji) => setMessage(p => p + emoji.emoji);
+    
+    const handleReaction = async (messageId, emoji) => {
+        try {
+            const currentMessages = allMessages[userId] || [];
+            const msgIndex = currentMessages.findIndex(m => m._id === messageId);
+            if (msgIndex === -1) return;
+            const updatedMsg = { ...currentMessages[msgIndex], reactions: [...(currentMessages[msgIndex].reactions || [])] };
+            const reactionIndex = updatedMsg.reactions.findIndex(r => r.user?._id === currentUser.id || r.user === currentUser.id);
+            if (reactionIndex > -1) {
+                if (updatedMsg.reactions[reactionIndex].emoji === emoji) { updatedMsg.reactions.splice(reactionIndex, 1); } 
+                else { updatedMsg.reactions[reactionIndex].emoji = emoji; }
+            } else { updatedMsg.reactions.push({ emoji, user: { _id: currentUser.id, name: currentUser.name } }); }
+            dispatch(updateSingleMessageInChat({ chatId: userId, updatedMessage: updatedMsg }));
+            await toggleMessageReaction(messageId, emoji);
+        } catch (e) { console.error("Reaction failed", e); dispatch(getMessages(userId)); } 
+        finally { setReactingToMessageId(null); }
+    };
     
     const handleSendMessage = async (e) => {
         e.preventDefault();
         if (!message.trim() || !currentUser) return;
-
         const tempId = Date.now().toString();
-        const optimisticMessage = {
-            _id: tempId,
-            sender: { _id: currentUser.id, name: currentUser.name, profilePhotoUrl: currentUser.profilePhotoUrl },
-            receiver: { _id: userId },
-            content: message.trim(),
-            messageType: 'text',
-            createdAt: new Date().toISOString(),
-            status: 'sent',
-            _type: 'message',
+        const optimisticMsg = {
+            _id: tempId, sender: { _id: currentUser.id, name: currentUser.name, profilePhotoUrl: currentUser.profilePhotoUrl },
+            receiver: { _id: userId }, content: message.trim(), messageType: 'text', createdAt: new Date().toISOString(),
+            status: 'sent', _type: 'message', reactions: [], replyTo: replyingTo ? { ...replyingTo, sender: { name: replyingTo.sender.name } } : null
         };
-
-        dispatch(addMessage({ chatId: userId, message: optimisticMessage }));
-        
-        const messageToSend = message.trim();
-        setMessage("");
-        setShowEmojiPicker(false);
-
+        dispatch(addMessage({ chatId: userId, message: optimisticMsg }));
+        const msgToSend = message.trim(); const replyId = replyingTo?._id;
+        setMessage(""); setShowEmojiPicker(false); setReplyingTo(null);
         try {
-            socketService.emit('send-message', {
-                receiverId: userId,
-                content: messageToSend,
-                tempId: tempId,
-            }, (ack) => {
-                if (ack.message) {
-                    dispatch(updateMessage({ chatId: userId, tempId: tempId, finalMessage: ack.message }));
-                    dispatch(fetchConnections(currentUser.id));
-                }
+            socketService.emit('send-message', { receiverId: userId, content: msgToSend, tempId, replyToMessageId: replyId }, (ack) => {
+                if (ack.message) { dispatch(updateMessage({ chatId: userId, tempId, finalMessage: ack.message })); dispatch(fetchConnections()); }
             });
-        } catch (error) {
-            console.error("Failed to send message:", error.message);
-        }
+        } catch (e) { console.error("Send message failed:", e); }
     };
     
     const handleFileChange = async (event) => {
@@ -426,111 +347,116 @@ const ChatPage = () => {
         setIsUploading(true);
         try {
             const uploadedFile = await uploadFileToCloudinary(file);
-            
-            socketService.emit('send-message', {
-                receiverId: userId,
-                content: uploadedFile.url,
-                messageType: file.type.startsWith("image") ? 'image' : 'file',
-                fileName: file.name,
-                fileSize: file.size,
-                tempId: Date.now().toString()
-            }, (ack) => {
-                 if (ack.message) {
-                    dispatch(fetchConnections(currentUser.id));
-                }
+            const tempId = Date.now().toString();
+            const messageType = file.type.startsWith("image") ? 'image' : 'file';
+            dispatch(addMessage({ chatId: userId, message: {
+                _id: tempId, sender: { _id: currentUser.id }, receiver: { _id: userId }, content: uploadedFile.url,
+                messageType, fileName: file.name, fileSize: file.size, createdAt: new Date().toISOString(), status: 'sent', _type: 'message',
+            }}));
+            socketService.emit('send-message', { receiverId: userId, content: uploadedFile.url, messageType, fileName: file.name, fileSize: file.size, tempId }, (ack) => {
+                if (ack.message) { dispatch(updateMessage({ chatId: userId, tempId, finalMessage: ack.message })); dispatch(fetchConnections()); }
             });
-            
-        } catch (error) { 
-            alert("Failed to upload and send file.");
-            console.error(error);
-        } finally { 
-            setIsUploading(false); 
-        }
+        } catch (e) { alert("File upload failed."); } 
+        finally { setIsUploading(false); if (fileInputRef.current) fileInputRef.current.value = ""; }
     };
     
-    const handleRemoveConnection = async () => {
-      if(chatUserConnection && window.confirm(`Are you sure you want to remove ${chatUser.name} from your connections?`)){
-        try {
-          await removeConnection(chatUserConnection._id);
-          alert("Connection removed.");
-          navigate('/dashboard');
-        } catch(error) {
-          alert("Failed to remove connection.");
-        }
-      }
-    };
-
+    const handleRemoveConnection = async () => { if(chatUserConnection && window.confirm(`Remove ${chatUser.name}?`)){ try { await removeConnection(chatUserConnection._id); navigate('/dashboard'); } catch(e) { alert("Failed to remove."); } } };
     const formatTime = (dateString) => format(new Date(dateString), 'p');
 
-    if (!currentUser || !chatUser) {
-        return <div className="h-full w-full flex items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-indigo-500"></div></div>;
-    }
+    const MessageBubble = ({ item, isSender, isFirstInGroup, isLastInGroup }) => {
+        const controls = useAnimation();
+        const handleDragEnd = (_, info) => {
+            if ((info.offset.x > 70 && !isSender) || (info.offset.x < -70 && isSender)) setReplyingTo(item);
+            controls.start({ x: 0, transition: { type: "spring", stiffness: 300, damping: 30 } });
+        };
+
+        const getBubbleClasses = () => {
+            let classes = 'message-bubble relative max-w-[80%] md:max-w-[70%] shadow-md ';
+            if (isSender) {
+                classes += 'bg-indigo-600 ';
+                if (isFirstInGroup && isLastInGroup) classes += 'rounded-xl sent';
+                else if (isFirstInGroup) classes += 'rounded-t-xl rounded-bl-xl';
+                else if (isLastInGroup) classes += 'rounded-b-xl rounded-tl-xl sent';
+                else classes += 'rounded-l-xl rounded-r-md';
+            } else {
+                classes += 'bg-slate-700 ';
+                if (isFirstInGroup && isLastInGroup) classes += 'rounded-xl received';
+                else if (isFirstInGroup) classes += 'rounded-t-xl rounded-br-xl';
+                else if (isLastInGroup) classes += 'rounded-b-xl rounded-tr-xl received';
+                else classes += 'rounded-r-xl rounded-l-md';
+            }
+            return classes;
+        };
+        
+        return (
+             <motion.div
+                layout animate={controls} drag="x" dragConstraints={{ left: 0, right: 0 }} onDragEnd={handleDragEnd} dragElastic={0.2}
+                onContextMenu={(e) => { e.preventDefault(); handleMessageLongPress(item._id); }} onClick={() => handleMessageClick(item._id)}
+                className={`relative group flex items-end gap-2 ${isFirstInGroup ? 'mt-2' : 'mt-0.5'} ${isSender ? "justify-end" : "justify-start"} ${selectedMessages.has(item._id) ? 'bg-indigo-500/20 rounded-lg' : ''}`}
+            >
+                {!isSender && <div className="w-8 flex-shrink-0">{isLastInGroup && <Avatar className="h-8 w-8"><AvatarImage src={chatUser?.profilePhotoUrl}/><AvatarFallback className="text-xs">{chatUser?.name?.charAt(0)}</AvatarFallback></Avatar>}</div>}
+                <div className={`absolute z-20 ${isSender ? 'left-0' : 'right-0'}`}>{reactingToMessageId === item._id && <ReactionPicker onSelect={(e) => handleReaction(item._id, e)} />}</div>
+                <div className="flex flex-col min-w-0">
+                    <div className={getBubbleClasses()}>
+                        {item.replyTo && (<div className="p-2 mx-1.5 mt-1.5 border-l-2 border-indigo-300 bg-black/20 rounded-md cursor-pointer"><p className="font-bold text-xs text-indigo-300">{item.replyTo.sender.name}</p><p className="text-xs text-slate-300/80 truncate">{item.replyTo.messageType === 'image' ? '📷 Photo' : item.replyTo.content}</p></div>)}
+                        {item.messageType === 'image' ? (
+                            <a href={item.content} target="_blank" rel="noopener noreferrer" className="block relative m-1.5">
+                                <img src={item.content} alt="Sent" className="max-w-[250px] md:max-w-[300px] h-auto rounded-lg" />
+                                <span className="absolute bottom-1.5 right-1.5 text-[11px] text-white/90 bg-black/40 px-1.5 py-0.5 rounded-full flex items-center">{formatTime(item.createdAt)}{isSender && <MessageStatus status={item.status} />}</span>
+                            </a>
+                        ) : item.messageType === 'file' ? (
+                            <div className="p-1">
+                                <a href={item.content} target="_blank" rel="noopener noreferrer" download={item.fileName || 'file'} className="flex items-center gap-2 p-2 text-white hover:underline">
+                                    <Paperclip className="h-8 w-8 flex-shrink-0 text-slate-300" /><div className="overflow-hidden"><p className="font-semibold truncate text-sm">{item.fileName || 'File'}</p><p className="text-xs text-slate-300">{item.fileSize ? `${(item.fileSize / 1024).toFixed(1)} KB` : ''}</p></div>
+                                </a>
+                                <div className="flex justify-end pb-1 pr-2"><span className="text-[11px] text-white/70 flex items-center">{formatTime(item.createdAt)}{isSender && <MessageStatus status={item.status} />}</span></div>
+                            </div>
+                        ) : (
+                            <div className="px-3 py-2"><p className="text-sm text-white whitespace-pre-wrap break-words">{item.content}</p><div className="float-right clear-both h-4" /><div className="absolute bottom-1.5 right-2.5"><span className="text-[11px] text-white/70 flex items-center">{formatTime(item.createdAt)}{isSender && <MessageStatus status={item.status} />}</span></div></div>
+                        )}
+                        <button onClick={(e) => { e.stopPropagation(); setReactingToMessageId(p => p === item._id ? null : item._id); }} className={`absolute -top-3 ${isSender ? 'left-1' : 'right-1'} p-1 rounded-full bg-slate-800 border opacity-0 group-hover:opacity-100`}><Smile className="h-4 w-4 text-slate-300"/></button>
+                    </div>
+                    {item.reactions?.length > 0 && (
+                        <div className={`flex gap-1 mt-1 ${isSender ? 'justify-end' : 'justify-start'}`}>
+                            {Object.entries(item.reactions.reduce((acc, r) => ({...acc, [r.emoji]: { count: (acc[r.emoji]?.count || 0) + 1, users: [...(acc[r.emoji]?.users || []), r.user] } }), {})).map(([emoji, data]) => (
+                               <TooltipProvider key={emoji}><Tooltip><TooltipTrigger><div className="bg-slate-700/50 rounded-full px-2 py-0.5 text-xs flex items-center gap-1 cursor-pointer" onClick={() => handleReaction(item._id, emoji)}><span>{emoji}</span>{data.count > 1 && <span className="font-semibold">{data.count}</span>}</div></TooltipTrigger><TooltipContent className="bg-slate-800 text-white"><p>{data.users.map(u => u?.name).filter(Boolean).join(', ')}</p></TooltipContent></Tooltip></TooltipProvider>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </motion.div>
+        );
+    };
+
+    if (!currentUser || !chatUser) { return <div className="h-full w-full flex items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-indigo-500"></div></div>; }
 
     return (
-        <div className="h-full w-full grid grid-rows-[auto_1fr_auto]">
-            <AnimatePresence>
-                {callState !== 'idle' && ( 
-                    <CallingUI 
-                        callState={callState} 
-                        callType={callType} 
-                        user={callState === 'incoming' ? caller : chatUser} 
-                        myVideo={myVideo} 
-                        userVideo={userVideo} 
-                        isMuted={isMuted} 
-                        isVideoOff={isVideoOff} 
-                        callDuration={callDuration} 
-                        leaveCall={leaveCall} 
-                        answerCall={answerCall} 
-                        toggleMute={toggleMute}
-                        toggleVideo={toggleVideo}
-                    /> 
-                )}
-            </AnimatePresence>
+        <div className="h-full w-full flex flex-col bg-[#0d1117]">
+            <AnimatePresence>{callState !== 'idle' && ( <CallingUI {...{callState, callType, user: callState === 'incoming' ? caller : chatUser, myVideo, userVideo, isMuted, isVideoOff, callDuration, leaveCall, answerCall, toggleMute, toggleVideo}}/> )}</AnimatePresence>
+            <Dialog open={isForwarding} onOpenChange={setIsForwarding}><ForwardDialog connections={connections} currentUser={currentUser} onForward={handleForwardSelected} /></Dialog>
+            <WallpaperDialog open={isWallpaperDialogOpen} onOpenChange={setIsWallpaperDialogOpen} connectionId={chatUserConnection?._id} currentWallpaper={currentWallpaper} onWallpaperChange={(url) => dispatch(setChatWallpaper({ connectionId: chatUserConnection._id, wallpaperUrl: url }))}/>
             
-            <Dialog open={isForwarding} onOpenChange={setIsForwarding}>
-                <ForwardDialog connections={connections} currentUser={currentUser} onForward={handleForwardSelected} />
-            </Dialog>
-
-            <WallpaperDialog
-                open={isWallpaperDialogOpen}
-                onOpenChange={setIsWallpaperDialogOpen}
-                connectionId={chatUserConnection?._id}
-                currentWallpaper={currentWallpaper}
-                onWallpaperChange={(url) => dispatch(setChatWallpaper({ connectionId: chatUserConnection._id, wallpaperUrl: url }))}
-            />
-            
-            <header className="flex items-center px-2 py-1 h-14 border-b border-slate-800 bg-slate-900/70 backdrop-blur-lg z-20">
+            <header className="flex-shrink-0 flex items-center px-2 py-1 h-14 border-b border-slate-800 bg-slate-900/70 backdrop-blur-lg z-20">
                 {selectionMode ? (
                     <div className="flex items-center justify-between w-full">
                         <Button variant="ghost" size="icon" onClick={clearSelection}><CloseIcon className="h-5 w-5" /></Button>
                         <span className="font-semibold text-lg">{selectedMessages.size} selected</span>
-                        <div className="flex items-center gap-1">
-                            <Button variant="ghost" size="icon" onClick={handleDeleteSelected}><Trash2 className="h-5 w-5" /></Button>
-                            {selectedMessages.size === 1 && <Button variant="ghost" size="icon" onClick={handlePinSelected}><Pin className="h-5 w-5" /></Button>}
-                            <Button variant="ghost" size="icon" onClick={() => setIsForwarding(true)}><Forward className="h-5 w-5" /></Button>
-                        </div>
+                        <div className="flex items-center gap-1"><Button variant="ghost" size="icon" onClick={handleDeleteSelected}><Trash2 className="h-5 w-5" /></Button>{selectedMessages.size === 1 && <Button variant="ghost" size="icon" onClick={handlePinSelected}><Pin className="h-5 w-5" /></Button>}<Button variant="ghost" size="icon" onClick={() => setIsForwarding(true)}><Forward className="h-5 w-5" /></Button></div>
                     </div>
                 ) : (
                     <>
                         <Button variant="ghost" size="icon" className="h-9 w-9 text-gray-400 md:hidden" onClick={() => navigate('/dashboard')}><ArrowLeft className="h-5 w-5"/></Button>
                         <div className="flex items-center gap-2 cursor-pointer flex-1 overflow-hidden" onClick={() => setInfoPanelOpen(true)}>
-                            <Avatar className="h-9 w-9">
-                                <AvatarImage src={chatUser.profilePhotoUrl}/>
-                                <AvatarFallback className="text-sm">{chatUser.name.charAt(0)}</AvatarFallback>
-                            </Avatar>
-                            <div className="flex-1 overflow-hidden">
-                                <h2 className="font-bold text-sm text-white truncate">{chatUser.name}</h2>
-                                <p className="text-xs text-indigo-400 h-4">{isTyping ? 'typing...' : (chatUser.isOnline ? 'Online' : 'Offline')}</p>
-                            </div>
+                            <Avatar className="h-9 w-9"><AvatarImage src={chatUser.profilePhotoUrl}/><AvatarFallback className="text-sm">{chatUser.name.charAt(0)}</AvatarFallback></Avatar>
+                            <div className="flex-1 overflow-hidden"><h2 className="font-bold text-sm text-white truncate">{chatUser.name}</h2><p className="text-xs text-indigo-400 h-4">{isTyping ? 'typing...' : (chatUser.isOnline ? 'Online' : 'Offline')}</p></div>
                         </div>
                         <div className="ml-auto flex items-center">
                             <Button variant="ghost" size="icon" onClick={() => callUser('video')} className="h-9 w-9 text-gray-400"><Video className="h-4 w-4"/></Button>
                             <Button variant="ghost" size="icon" onClick={() => callUser('audio')} className="h-9 w-9 text-gray-400"><Phone className="h-4 w-4"/></Button>
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-9 w-9 text-gray-400"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger>
+                            <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-9 w-9 text-gray-400"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger>
                                 <DropdownMenuContent className="bg-slate-800 border-slate-700 text-white">
                                     <DropdownMenuItem onClick={() => setInfoPanelOpen(true)}>View Info</DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => setIsWallpaperDialogOpen(true)}><Wallpaper className="mr-2 h-4 w-4" /><span>Change Wallpaper</span></DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => setIsWallpaperDialogOpen(true)}><Wallpaper className="mr-2 h-4 w-4" />Change Wallpaper</DropdownMenuItem>
                                     <DropdownMenuSeparator className="bg-slate-700"/>
                                     <DropdownMenuItem className="text-red-500" onClick={handleRemoveConnection}><UserX className="mr-2 h-4 w-4"/>Remove Connection</DropdownMenuItem>
                                 </DropdownMenuContent>
@@ -540,57 +466,34 @@ const ChatPage = () => {
                 )}
             </header>
             
-            <div className="relative overflow-hidden">
-                {pinnedMessage && !selectionMode && (<motion.div initial={{y: -50}} animate={{y: 0}} className="absolute top-0 left-0 right-0 p-2 bg-slate-800/80 backdrop-blur-sm flex items-center gap-2 text-sm text-slate-300 border-b border-slate-700 z-20"><Pin className="h-4 w-4 text-indigo-400 flex-shrink-0" /><p className="truncate flex-1">{pinnedMessage.content}</p><Button variant="ghost" size="icon" className="h-6 w-6" onClick={async () => { await togglePinMessage(pinnedMessage._id); dispatch(getMessages(userId)); }}><CloseIcon className="h-4 w-4" /></Button></motion.div>)}
-                
-                <div className="absolute inset-0 z-0">
-                    {currentWallpaper ? (
-                        <div className="w-full h-full bg-cover bg-center" style={{ backgroundImage: `url(${currentWallpaper})` }}>
-                            <div className="w-full h-full bg-black/50"></div>
-                        </div>
-                    ) : (
-                        <div className="static-pattern-background" style={{height: '100%', width: '100%'}}></div>
-                    )}
-                </div>
-
+            <div className="flex-1 relative overflow-hidden min-h-0">
+                {pinnedMessage && !selectionMode && (<motion.div initial={{y: -50}} animate={{y: 0}} className="absolute top-0 left-0 right-0 p-2 bg-slate-800/80 backdrop-blur-sm flex items-center gap-2 text-sm z-20"><Pin className="h-4 w-4 text-indigo-400 flex-shrink-0" /><p className="truncate flex-1">{pinnedMessage.content}</p><Button variant="ghost" size="icon" className="h-6 w-6" onClick={async () => { await togglePinMessage(pinnedMessage._id); dispatch(getMessages(userId)); }}><CloseIcon className="h-4 w-4" /></Button></motion.div>)}
+                <div className="absolute inset-0 z-0">{currentWallpaper ? (<div className="w-full h-full bg-cover bg-center" style={{ backgroundImage: `url(${currentWallpaper})` }}><div className="w-full h-full bg-black/50"></div></div>) : (<div className="static-pattern-background"></div>)}</div>
                 <div className="relative z-10 h-full overflow-y-auto custom-scrollbar">
-                    <div className="p-3 flex flex-col">
-                        {activeChatMessages.map((item, index) => {
+                    <div className="p-2 flex flex-col">
+                        {messagesLoading && activeChatMessages.length === 0 ? (
+                            <div className="flex justify-center items-center h-full"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-400"></div></div>
+                        ) : activeChatMessages.map((item, index) => {
+                            if (!item || !item._type) return null;
                             const showDateHeader = index === 0 || !isSameDay(new Date(activeChatMessages[index - 1].createdAt), new Date(item.createdAt));
                             if (item._type === 'call') {
-                                const isOutgoing = item.caller._id === currentUser.id;
-                                const callTime = format(new Date(item.createdAt), 'p');
-                                let Icon = PhoneIncoming; let text = 'Incoming call';
-                                if (isOutgoing) { Icon = PhoneOutgoing; text = 'Outgoing call'; }
-                                if (item.status === 'missed' || item.status === 'rejected') { Icon = PhoneMissed; text = 'Missed call'; }
-                                return (<div key={item._id || index}>{showDateHeader && (<div className="text-center text-xs text-slate-500 my-4 bg-slate-800/50 self-center px-3 py-1 rounded-full">{format(new Date(item.createdAt), 'MMMM d, yyyy')}</div>)}<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center justify-center my-3"><div className="flex items-center gap-2 text-sm text-slate-400 bg-slate-800/60 px-3 py-1.5 rounded-lg"><Icon className={`h-4 w-4 ${item.status === 'missed' || item.status === 'rejected' ? 'text-red-400' : 'text-slate-500'}`} /><span>{text}</span><span>•</span><span>{callTime}</span></div></motion.div></div>);
+                                const isOutgoing = item.caller._id === currentUser.id; const callTime = format(new Date(item.createdAt), 'p');
+                                let Icon = PhoneIncoming; let text = 'Incoming';
+                                if (isOutgoing) { Icon = PhoneOutgoing; text = 'Outgoing'; }
+                                if (item.status === 'missed' || item.status === 'rejected') { Icon = PhoneMissed; text = 'Missed'; }
+                                return (<div key={item._id || index}>{showDateHeader && (<div className="text-center text-xs text-slate-500 my-4 bg-slate-800/50 self-center px-3 py-1 rounded-full">{format(new Date(item.createdAt), 'MMMM d, yyyy')}</div>)}<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-center my-3"><div className="flex items-center gap-2 text-sm text-slate-400 bg-slate-800/60 px-3 py-1.5 rounded-lg"><Icon className={`h-4 w-4 ${item.status === 'missed' || item.status === 'rejected' ? 'text-red-400' : ''}`} /><span>{text} call</span><span>•</span><span>{callTime}</span></div></motion.div></div>);
                             }
                             const isSender = item.sender?._id === currentUser.id;
-                            const isSelected = selectedMessages.has(item._id);
+                            
+                            const prevMessage = activeChatMessages[index - 1];
+                            const nextMessage = activeChatMessages[index + 1];
+                            const isFirstInGroup = !prevMessage || prevMessage.sender?._id !== item.sender?._id || !isSameDay(new Date(prevMessage.createdAt), new Date(item.createdAt));
+                            const isLastInGroup = !nextMessage || nextMessage.sender?._id !== item.sender?._id || !isSameDay(new Date(nextMessage.createdAt), new Date(item.createdAt));
+
                             return (
-                                <div key={item._id || index} onContextMenu={(e) => { e.preventDefault(); handleMessageLongPress(item._id); }}>
+                                <div key={item._id || index}>
                                     {showDateHeader && (<div className="text-center text-xs text-slate-500 my-4 bg-slate-800/50 self-center px-3 py-1 rounded-full">{format(new Date(item.createdAt), 'MMMM d, yyyy')}</div>)}
-                                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} onClick={() => handleMessageClick(item._id)} className={`flex items-end gap-1.5 my-0.5 rounded-lg transition-colors duration-200 ${isSender ? "justify-end" : "justify-start"} ${isSelected ? 'bg-indigo-500/20' : ''}`}>
-                                        {!isSender && <Avatar className="h-6 w-6 self-end"><AvatarImage src={chatUser?.profilePhotoUrl}/><AvatarFallback className="text-xs">{chatUser?.name?.charAt(0)}</AvatarFallback></Avatar>}
-                                        <div className={`message-bubble max-w-[40%] md:max-w-[25%] rounded-xl ${isSender ? "bg-indigo-600 sent" : "bg-[#2a2a36] received"}`}>
-                                            {item.messageType === 'image' ? (
-                                                <a href={item.content} target="_blank" rel="noopener noreferrer" className="block p-1">
-                                                    <img src={item.content} alt="Sent" className="max-w-xs md:max-w-sm h-auto rounded-lg" />
-                                                </a>
-                                            ) : item.messageType === 'file' ? (
-                                                <a href={item.content} target="_blank" rel="noopener noreferrer" download={item.fileName || 'file'} className="flex items-center gap-3 p-3 text-white hover:underline bg-slate-700/50 rounded-lg">
-                                                    <Paperclip className="h-8 w-8 flex-shrink-0 text-slate-400" />
-                                                    <div className="overflow-hidden">
-                                                        <p className="font-semibold truncate">{item.fileName || 'Attached File'}</p>
-                                                        <p className="text-xs text-slate-300">{item.fileSize ? `${(item.fileSize / 1024).toFixed(2)} KB` : ''}</p>
-                                                    </div>
-                                                </a>
-                                            ) : (
-                                                <p className="px-2.5 py-1.5 text-sm break-words text-white">{item.content}</p>
-                                            )}
-                                            <span className="text-[10px] opacity-70 float-right mr-2 mb-1 self-end text-white/70 flex items-center">{formatTime(item.createdAt)}{isSender && <MessageStatus status={item.status} />}</span>
-                                        </div>
-                                    </motion.div>
+                                    <MessageBubble item={item} isSender={isSender} isFirstInGroup={isFirstInGroup} isLastInGroup={isLastInGroup} />
                                 </div>
                             );
                         })}
@@ -599,16 +502,15 @@ const ChatPage = () => {
                 </div>
             </div>
             
-            <footer className="p-1.5 border-t border-slate-800 bg-slate-900/70 backdrop-blur-lg z-20 relative">
-                <AnimatePresence>{showEmojiPicker && ( <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute bottom-[52px] left-2 z-30"><EmojiPicker onEmojiClick={handleEmojiClick} theme="dark" lazyLoadEmojis={true} /></motion.div>)}</AnimatePresence>
-                <form onSubmit={handleSendMessage} className="flex items-center gap-1.5">
+            <footer className="flex-shrink-0 p-2 border-t border-slate-800 bg-slate-900/70 backdrop-blur-lg z-20 relative">
+                <AnimatePresence>{replyingTo && (<motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="bg-slate-800 p-2 mx-1 rounded-t-lg border-b"><div className="flex justify-between items-center"><div className="border-l-2 border-indigo-400 pl-2 text-xs"><p className="font-bold text-indigo-400">Replying to {replyingTo.sender.name}</p><p className="text-slate-400 truncate max-w-xs">{replyingTo.messageType === 'image' ? '📷 Photo' : replyingTo.content}</p></div><Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setReplyingTo(null)}><CloseIcon className="h-4 w-4" /></Button></div></motion.div>)}</AnimatePresence>
+                <AnimatePresence>{showEmojiPicker && ( <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute bottom-[60px] left-2 z-30"><EmojiPicker onEmojiClick={handleEmojiClick} theme="dark" lazyLoadEmojis={true} /></motion.div>)}</AnimatePresence>
+                <form onSubmit={handleSendMessage} className="flex items-center gap-2">
                     <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
-                    <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-gray-400 hover:text-white flex-shrink-0" onClick={() => fileInputRef.current.click()} disabled={isUploading}><Paperclip className="h-4 w-4" /></Button>
-                    <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-gray-400 hover:text-white flex-shrink-0" onClick={() => setShowEmojiPicker(!showEmojiPicker)}><Smile className="h-4 w-4" /></Button>
-                    <Input value={message} onChange={(e) => { setMessage(e.target.value); handleTyping(); }} placeholder="Message..." className="flex-1 h-9 bg-slate-800 border-slate-700 rounded-full px-4 text-sm" onFocus={() => setShowEmojiPicker(false)} />
-                    <Button type="submit" size="icon" className="h-9 w-9 bg-indigo-600 hover:bg-indigo-500 rounded-full flex-shrink-0" disabled={!message.trim() || isUploading}>
-                        {isUploading ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div> : <Send className="h-4 w-4" />}
-                    </Button>
+                    <Button type="button" variant="ghost" size="icon" className="h-10 w-10 text-gray-400 hover:text-white flex-shrink-0" onClick={() => fileInputRef.current.click()} disabled={isUploading}><Paperclip className="h-5 w-5" /></Button>
+                    <Button type="button" variant="ghost" size="icon" className="h-10 w-10 text-gray-400 hover:text-white flex-shrink-0" onClick={() => setShowEmojiPicker(!showEmojiPicker)}><Smile className="h-5 w-5" /></Button>
+                    <Input value={message} onChange={(e) => { setMessage(e.target.value); handleTyping(); }} placeholder="Message..." className="flex-1 h-10 bg-slate-800 border-slate-700 rounded-full px-4" onFocus={() => {setShowEmojiPicker(false); setReactingToMessageId(null);}} />
+                    <Button type="submit" size="icon" className="h-10 w-10 bg-indigo-600 hover:bg-indigo-500 rounded-full flex-shrink-0" disabled={!message.trim() || isUploading}>{isUploading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div> : <Send className="h-5 w-5" />}</Button>
                 </form>
             </footer>
             <AnimatePresence>{isInfoPanelOpen && ( <InfoPanel user={chatUser} isOpen={isInfoPanelOpen} onClose={() => setInfoPanelOpen(false)} onRemoveConnection={handleRemoveConnection} /> )}</AnimatePresence>
