@@ -1,4 +1,4 @@
-// client/src/pages/ChatPage.jsx (UPDATED WITH UNREAD COUNT FIX)
+// client/src/pages/ChatPage.jsx (FIXED)
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
@@ -18,9 +18,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "../components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../components/ui/dialog";
 import { getMessages, addMessage, updateMessage } from "../store/slices/chatSlice";
-// <<< --- YEH BADLAAV KIYA GAYA HAI (1/3): 'clearUnreadCount' ko import karein --- >>>
 import { setChatWallpaper, fetchConnections, clearUnreadCount } from "../store/slices/connectionsSlice";
-import { uploadFileToCloudinary, removeConnection, logCall, togglePinMessage, deleteMultipleMessages, forwardMessage, updateWallpaper } from "../utils/api";
+import { uploadFileToCloudinary, removeConnection, logCall, togglePinMessage, deleteMultipleMessages, forwardMessage, updateWallpaper, sendMessageToBot  } from "../utils/api";
 
 const peerOptions = { config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }]}};
 const wallpapers = [{ name: 'Default', url: '' }, { name: 'Doodle', url: '/wallpapers/doodle.png' }, { name: 'Nature', url: '/wallpapers/nature.jpg' }, { name: 'Dark Space', url: '/wallpapers/dark-space.jpg' }, { name: 'Abstract', url: '/wallpapers/abstract.jpg' }];
@@ -80,9 +79,9 @@ const WallpaperDialog = ({ open, onOpenChange, connectionId, currentWallpaper, o
 };
 
 const MessageStatus = ({ status }) => {
-  if (status === 'read') return <CheckCheck className="ml-1 h-3 w-3 text-blue-400" />;
-  if (status === 'delivered') return <CheckCheck className="ml-1 h-3 w-3 text-slate-400" />;
-  return <Check className="ml-1 h-3 w-3 text-slate-400" />;
+    if (status === 'read') return <CheckCheck className="ml-1 h-3 w-3 text-blue-400" />;
+    if (status === 'delivered') return <CheckCheck className="ml-1 h-3 w-3 text-slate-400" />;
+    return <Check className="ml-1 h-3 w-3 text-slate-400" />;
 };
 
 const ForwardDialog = ({ connections, onForward, currentUser }) => {
@@ -120,8 +119,19 @@ const ChatPage = () => {
     const { connections } = useSelector((state) => state.connections);
     const { user: currentUser } = useSelector((state) => state.auth);
     const activeChatMessages = useSelector((state) => state.chat.messages[userId] || []);
+    
+    const isChattingWithBot = userId === 'chatbot-user-id';
+    
     const chatUserConnection = connections.find(c => c.users.some(u => u._id === userId));
-    const chatUser = chatUserConnection?.users.find(u => u._id === userId);
+    
+    const chatUser = isChattingWithBot 
+        ? { 
+            _id: 'chatbot-user-id', 
+            name: 'Nexus AI Bot', 
+            profilePhotoUrl: '/logo.png',
+            isOnline: true 
+          }
+        : chatUserConnection?.users.find(u => u._id === userId);
 
     const [isTyping, setIsTyping] = useState(false);
     const [message, setMessage] = useState("");
@@ -188,7 +198,6 @@ const ChatPage = () => {
 
         dispatch(getMessages(userId));
         
-        // <<< --- YEH BADLAAV KIYA GAYA HAI (2/3): Chat khulte hi count clear karein --- >>>
         socketService.emit('mark-messages-read', { chatUserId: userId });
         dispatch(clearUnreadCount({ chatId: userId }));
         
@@ -350,18 +359,14 @@ const ChatPage = () => {
             console.error(error);
         }
     };
-     const handleTyping = () => {
+    const handleTyping = () => {
         socketService.emit("typing", { receiverId: userId });
         if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
         typingTimeoutRef.current = setTimeout(() => { socketService.emit("stop-typing", { receiverId: userId }); }, 2000);
     };
 
-    // <<< --- YEH BADLAAV KIYA GAYA HAI (3/3): Is useEffect se 'fetchConnections' hata dein --- >>>
-    // Taki jab naya message aaye to connection list refresh na ho aur scroll position na bigde.
     useEffect(() => {
         if (currentUser && userId) {
-            // dispatch(fetchConnections(currentUser.id)); // <-- IS LINE KO COMMENT YA DELETE KAR DEIN
-            
             const handleUserTyping = ({ userId: typingUserId }) => { if (typingUserId === userId) setIsTyping(true); };
             const handleUserStopTyping = ({ userId: stopTypingUserId }) => { if (stopTypingUserId === userId) setIsTyping(false); };
             
@@ -385,6 +390,13 @@ const ChatPage = () => {
     const handleSendMessage = async (e) => {
         e.preventDefault();
         if (!message.trim() || !currentUser) return;
+
+        if (isChattingWithBot) {
+            const messageToSend = message.trim();
+            setMessage(""); 
+            handleSendToBot(messageToSend);
+            return;
+        }
 
         const tempId = Date.now().toString();
         const optimisticMessage = {
@@ -435,7 +447,7 @@ const ChatPage = () => {
                 fileSize: file.size,
                 tempId: Date.now().toString()
             }, (ack) => {
-                 if (ack.message) {
+                if (ack.message) {
                     dispatch(fetchConnections(currentUser.id));
                 }
             });
@@ -448,16 +460,56 @@ const ChatPage = () => {
         }
     };
     
-    const handleRemoveConnection = async () => {
-      if(chatUserConnection && window.confirm(`Are you sure you want to remove ${chatUser.name} from your connections?`)){
+    const handleSendToBot = async (messageContent) => {
+        const userMessage = {
+            _id: Date.now().toString(),
+            sender: { _id: currentUser.id },
+            content: messageContent,
+            messageType: 'text',
+            createdAt: new Date().toISOString(),
+            status: 'sent',
+            _type: 'message'
+        };
+        dispatch(addMessage({ chatId: userId, message: userMessage }));
+
         try {
-          await removeConnection(chatUserConnection._id);
-          alert("Connection removed.");
-          navigate('/dashboard');
-        } catch(error) {
-          alert("Failed to remove connection.");
+            const botResponse = await sendMessageToBot(messageContent);
+
+            const botMessage = {
+                _id: Date.now().toString() + '_bot',
+                sender: { _id: 'chatbot-user-id', name: 'Nexus AI Bot', profilePhotoUrl: '/logo.png' },
+                content: botResponse.reply,
+                messageType: 'text',
+                createdAt: new Date().toISOString(),
+                status: 'read',
+                _type: 'message'
+            };
+            dispatch(addMessage({ chatId: userId, message: botMessage }));
+
+        } catch (error) {
+            const errorMessage = {
+                _id: Date.now().toString() + '_error',
+                sender: { _id: 'chatbot-user-id', name: 'Nexus AI Bot', profilePhotoUrl: '/logo.png' },
+                content: "Sorry, I couldn't connect to my brain. Please try again.",
+                messageType: 'text',
+                createdAt: new Date().toISOString(),
+                status: 'read',
+                _type: 'message'
+            };
+            dispatch(addMessage({ chatId: userId, message: errorMessage }));
         }
-      }
+    };
+
+    const handleRemoveConnection = async () => {
+    if(chatUserConnection && window.confirm(`Are you sure you want to remove ${chatUser.name} from your connections?`)){
+        try {
+        await removeConnection(chatUserConnection._id);
+        alert("Connection removed.");
+        navigate('/dashboard');
+        } catch(error) {
+        alert("Failed to remove connection.");
+        }
+    }
     };
 
     const formatTime = (dateString) => format(new Date(dateString), 'p');
@@ -513,7 +565,7 @@ const ChatPage = () => {
                 ) : (
                     <>
                         <Button variant="ghost" size="icon" className="h-9 w-9 text-gray-400 md:hidden" onClick={() => navigate('/dashboard')}><ArrowLeft className="h-5 w-5"/></Button>
-                        <div className="flex items-center gap-2 cursor-pointer flex-1 overflow-hidden" onClick={() => setInfoPanelOpen(true)}>
+                        <div className="flex items-center gap-2 cursor-pointer flex-1 overflow-hidden" onClick={() => !isChattingWithBot && setInfoPanelOpen(true)}>
                             <Avatar className="h-9 w-9">
                                 <AvatarImage src={chatUser.profilePhotoUrl}/>
                                 <AvatarFallback className="text-sm">{chatUser.name.charAt(0)}</AvatarFallback>
@@ -524,17 +576,21 @@ const ChatPage = () => {
                             </div>
                         </div>
                         <div className="ml-auto flex items-center">
-                            <Button variant="ghost" size="icon" onClick={() => callUser('video')} className="h-9 w-9 text-gray-400"><Video className="h-4 w-4"/></Button>
-                            <Button variant="ghost" size="icon" onClick={() => callUser('audio')} className="h-9 w-9 text-gray-400"><Phone className="h-4 w-4"/></Button>
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-9 w-9 text-gray-400"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger>
-                                <DropdownMenuContent className="bg-slate-800 border-slate-700 text-white">
-                                    <DropdownMenuItem onClick={() => setInfoPanelOpen(true)}>View Info</DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => setIsWallpaperDialogOpen(true)}><Wallpaper className="mr-2 h-4 w-4" /><span>Change Wallpaper</span></DropdownMenuItem>
-                                    <DropdownMenuSeparator className="bg-slate-700"/>
-                                    <DropdownMenuItem className="text-red-500" onClick={handleRemoveConnection}><UserX className="mr-2 h-4 w-4"/>Remove Connection</DropdownMenuItem>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
+                            {!isChattingWithBot && (
+                                <>
+                                    <Button variant="ghost" size="icon" onClick={() => callUser('video')} className="h-9 w-9 text-gray-400"><Video className="h-4 w-4"/></Button>
+                                    <Button variant="ghost" size="icon" onClick={() => callUser('audio')} className="h-9 w-9 text-gray-400"><Phone className="h-4 w-4"/></Button>
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-9 w-9 text-gray-400"><MoreVertical className="h-4 w-4"/></Button></DropdownMenuTrigger>
+                                        <DropdownMenuContent className="bg-slate-800 border-slate-700 text-white">
+                                            <DropdownMenuItem onClick={() => setInfoPanelOpen(true)}>View Info</DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => setIsWallpaperDialogOpen(true)}><Wallpaper className="mr-2 h-4 w-4" /><span>Change Wallpaper</span></DropdownMenuItem>
+                                            <DropdownMenuSeparator className="bg-slate-700"/>
+                                            <DropdownMenuItem className="text-red-500" onClick={handleRemoveConnection}><UserX className="mr-2 h-4 w-4"/>Remove Connection</DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                </>
+                            )}
                         </div>
                     </>
                 )}
@@ -603,15 +659,15 @@ const ChatPage = () => {
                 <AnimatePresence>{showEmojiPicker && ( <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute bottom-[52px] left-2 z-30"><EmojiPicker onEmojiClick={handleEmojiClick} theme="dark" lazyLoadEmojis={true} /></motion.div>)}</AnimatePresence>
                 <form onSubmit={handleSendMessage} className="flex items-center gap-1.5">
                     <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
-                    <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-gray-400 hover:text-white flex-shrink-0" onClick={() => fileInputRef.current.click()} disabled={isUploading}><Paperclip className="h-4 w-4" /></Button>
+                    <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-gray-400 hover:text-white flex-shrink-0" onClick={() => fileInputRef.current.click()} disabled={isUploading || isChattingWithBot}><Paperclip className="h-4 w-4" /></Button>
                     <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-gray-400 hover:text-white flex-shrink-0" onClick={() => setShowEmojiPicker(!showEmojiPicker)}><Smile className="h-4 w-4" /></Button>
-                    <Input value={message} onChange={(e) => { setMessage(e.target.value); handleTyping(); }} placeholder="Message..." className="flex-1 h-9 bg-slate-800 border-slate-700 rounded-full px-4 text-sm" onFocus={() => setShowEmojiPicker(false)} />
+                    <Input value={message} onChange={(e) => { setMessage(e.target.value); if(!isChattingWithBot) handleTyping(); }} placeholder="Message..." className="flex-1 h-9 bg-slate-800 border-slate-700 rounded-full px-4 text-sm" onFocus={() => setShowEmojiPicker(false)} />
                     <Button type="submit" size="icon" className="h-9 w-9 bg-indigo-600 hover:bg-indigo-500 rounded-full flex-shrink-0" disabled={!message.trim() || isUploading}>
                         {isUploading ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div> : <Send className="h-4 w-4" />}
                     </Button>
                 </form>
             </footer>
-            <AnimatePresence>{isInfoPanelOpen && ( <InfoPanel user={chatUser} isOpen={isInfoPanelOpen} onClose={() => setInfoPanelOpen(false)} onRemoveConnection={handleRemoveConnection} /> )}</AnimatePresence>
+            <AnimatePresence>{isInfoPanelOpen && !isChattingWithBot && ( <InfoPanel user={chatUser} isOpen={isInfoPanelOpen} onClose={() => setInfoPanelOpen(false)} onRemoveConnection={handleRemoveConnection} /> )}</AnimatePresence>
         </div>
     );
 };

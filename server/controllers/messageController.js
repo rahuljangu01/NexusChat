@@ -1,3 +1,5 @@
+// server/controllers/messageController.js (FINALIZED & CORRECTED)
+
 const Message = require("../models/Message");
 const CallRecord = require("../models/CallRecord");
 const Connection = require("../models/Connection");
@@ -5,7 +7,6 @@ const Connection = require("../models/Connection");
 // Send a new message (Updated for Replies)
 exports.sendMessage = async (req, res) => {
   try {
-    // <<< --- 'replyToMessageId' ko yahan se nikalein --- >>>
     const { receiverId, content, messageType = "text", fileName, fileSize, replyToMessageId } = req.body;
     const senderId = req.user.id;
 
@@ -25,7 +26,6 @@ exports.sendMessage = async (req, res) => {
         messageType, 
         fileName, 
         fileSize,
-        // <<< --- Reply ID ko save karein agar woh मौजूद hai --- >>>
         replyTo: replyToMessageId || null 
     });
 
@@ -54,9 +54,14 @@ exports.sendMessage = async (req, res) => {
 
 // Get all messages (Updated to populate replies)
 exports.getMessages = async (req, res) => {
+  // <<< --- THIS IS THE FIX --- >>>
+  // Declare variables outside the try block so they are accessible in the catch block.
+  let userId;
+  let currentUserId;
+
   try {
-    const { userId } = req.params;
-    const currentUserId = req.user.id;
+    userId = req.params.userId;
+    currentUserId = req.user.id;
 
     const messages = await Message.find({
       $or: [
@@ -65,7 +70,6 @@ exports.getMessages = async (req, res) => {
       ],
     })
       .populate("sender", "name profilePhotoUrl")
-      // <<< --- Reply wale message aur uske sender ki details bhi laayein --- >>>
       .populate({
           path: 'replyTo',
           populate: { path: 'sender', select: 'name content messageType' }
@@ -88,13 +92,13 @@ exports.getMessages = async (req, res) => {
 
     res.json({ success: true, messages: combinedHistory });
   } catch (error) {
-    console.error(`Error in getMessages for user ${currentUserId}:`, error);
+    console.error(`Error in getMessages for user ${currentUserId} and chat partner ${userId}:`, error);
     res.status(500).json({ message: "Server error while fetching messages." });
   }
 };
 
 
-// <<< --- YEH NAYA FUNCTION ADD KAREIN (toggleReaction) --- >>>
+// Toggle a reaction to a message
 exports.toggleReaction = async (req, res) => {
     try {
         const { messageId } = req.params;
@@ -114,15 +118,15 @@ exports.toggleReaction = async (req, res) => {
             r => r.user.toString() === userId
         );
 
-        // User ne pehle se react kiya hai
+        // User has already reacted
         if (reactionIndex > -1) {
-            // Agar same emoji hai, to reaction hata do (unlike)
+            // If it's the same emoji, remove the reaction (unlike)
             if (message.reactions[reactionIndex].emoji === emoji) {
                 message.reactions.splice(reactionIndex, 1);
-            } else { // Agar alag emoji hai, to update kar do
+            } else { // If it's a different emoji, update it
                 message.reactions[reactionIndex].emoji = emoji;
             }
-        } else { // User pehli baar react kar raha hai
+        } else { // User is reacting for the first time
             message.reactions.push({ emoji, user: userId });
         }
 
@@ -135,9 +139,8 @@ exports.toggleReaction = async (req, res) => {
                 populate: { path: 'sender', select: 'name content messageType' }
             });
 
-        // Sabhi clients ko real-time update bhejo
+        // Send a real-time update to all clients
         const io = req.app.get('io');
-        const chatPartnerId = message.sender.toString() === userId ? message.receiver.toString() : message.sender.toString();
         const userSocketMap = io.userSocketMap;
         
         const senderSocketId = userSocketMap[message.sender.toString()];
@@ -296,51 +299,6 @@ exports.deleteMultipleMessages = async (req, res) => {
         res.json({ success: true, message: "Messages deleted successfully." });
     } catch (error) {
         console.error(`Error in deleteMultipleMessages for user ${req.user.id}:`, error);
-        res.status(500).json({ message: "Server error." });
-    }
-};
-
-// Add/Update/Remove a reaction to a message
-exports.toggleReaction = async (req, res) => {
-    try {
-        const { messageId } = req.params;
-        const { emoji } = req.body;
-        const userId = req.user.id;
-
-        if (!emoji) {
-            return res.status(400).json({ message: "Emoji is required." });
-        }
-
-        const message = await Message.findById(messageId);
-        if (!message) {
-            return res.status(404).json({ message: "Message not found." });
-        }
-
-        const reactionIndex = message.reactions.findIndex(
-            r => r.user.toString() === userId
-        );
-
-        if (reactionIndex > -1) {
-            if (message.reactions[reactionIndex].emoji === emoji) {
-                message.reactions.splice(reactionIndex, 1);
-            } else {
-                message.reactions[reactionIndex].emoji = emoji;
-            }
-        } else {
-            message.reactions.push({ emoji, user: userId });
-        }
-
-        await message.save();
-        
-        const populatedMessage = await message.populate({ path: 'reactions.user', select: 'name' });
-        
-        const io = req.app.get('io');
-        const chatRoom = [message.sender.toString(), message.receiver.toString()].sort().join('-');
-        io.to(chatRoom).emit('message-updated', populatedMessage);
-
-        res.status(200).json({ success: true, message: populatedMessage });
-    } catch (error) {
-        console.error("Toggle reaction error:", error);
         res.status(500).json({ message: "Server error." });
     }
 };

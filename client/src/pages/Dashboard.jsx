@@ -18,7 +18,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../com
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
 import UserListItem from "../components/UserListItem";
 import { searchUsers, sendConnectionRequest, acceptConnectionRequest, rejectConnectionRequest, removeConnection } from "../utils/api";
-
 const FindPeersDialog = ({ user, connections, onAction }) => {
     const [searchQuery, setSearchQuery] = useState("");
     const [searchResults, setSearchResults] = useState([]);
@@ -54,6 +53,19 @@ const FindPeersDialog = ({ user, connections, onAction }) => {
         </div>
       </DialogContent>
     );
+};
+const chatbotUser = {
+  _id: 'chatbot-user-id', // Ek unique ID
+  users: [
+    { 
+      _id: 'chatbot-user-id', 
+      name: 'Nexus AI Bot', 
+      profilePhotoUrl: '/logo.png', // Aap koi aur photo bhi use kar sakte hain
+      isOnline: true 
+    }
+  ],
+  lastMessage: { content: 'Ask me anything!', createdAt: new Date().toISOString() },
+  unreadCount: 0
 };
 
 const Dashboard = () => {
@@ -103,9 +115,13 @@ const Dashboard = () => {
     return <div className="min-h-screen flex items-center justify-center bg-slate-900"><div className="animate-spin rounded-full h-32 w-32 border-b-2 border-indigo-500"></div></div>;
   }
   
-  const sortedAndFilteredConnections = [...connections]
+  const sortedAndFilteredConnections = [chatbotUser, ...connections]
     .filter(conn => {
         const otherUser = conn.users.find(u => u && u._id !== user.id);
+        if (!otherUser) return false;
+         if (otherUser._id === 'chatbot-user-id') {
+            return otherUser.name.toLowerCase().includes(chatSearch.toLowerCase());
+        }
         return otherUser && otherUser.name.toLowerCase().includes(chatSearch.toLowerCase());
     })
     .sort((a, b) => {

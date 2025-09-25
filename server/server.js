@@ -21,6 +21,8 @@ const uploadRoutes = require("./routes/upload");
 const statusRoutes = require("./routes/status");
 const callRoutes = require("./routes/calls");
 
+const chatbotRoutes = require("./routes/chatbot");
+
 const app = express();
 const server = http.createServer(app);
 
@@ -78,6 +80,7 @@ app.use("/api/groups", groupRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/status", statusRoutes);
 app.use("/api/calls", callRoutes);
+app.use("/api/chatbot", chatbotRoutes);
 
 if (process.env.NODE_ENV === 'production') {
     app.use(express.static(path.join(__dirname, '../client/build')));

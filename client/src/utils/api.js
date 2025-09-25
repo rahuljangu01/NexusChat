@@ -209,4 +209,9 @@ export const getSharedMedia = async (userId) => {
   return data.media;
 };
 
+export const sendMessageToBot = async (message) => {
+  const { data } = await api.post('/chatbot/message', { message });
+  return data;
+};
+
 export default api;

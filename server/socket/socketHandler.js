@@ -1,9 +1,9 @@
-// server/socket/socketHandler.js (FINAL & CORRECTED)
+// server/socket/socketHandler.js (UPDATED & FINAL)
 
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const Message = require("../models/Message");
-const Connection = require("../models/Connection"); // Ensure Connection is imported
+const Connection = require("../models/Connection");
 
 const userSocketMap = {}; // Maps userId to socketId
 
@@ -35,14 +35,19 @@ const socketHandler = (io) => {
     userSocketMap[userId] = socket.id;
     socket.join(userId);
 
-    socket.broadcast.emit("user-online", { userId });
-    User.findByIdAndUpdate(userId, { isOnline: true }).exec();
+    const handleUserConnect = async () => {
+        try {
+            await User.findByIdAndUpdate(userId, { isOnline: true });
+            socket.broadcast.emit("user-online", { userId });
 
-    Message.find({ receiver: userId, status: 'sent' }).distinct('sender').then(senderIds => {
-        Message.updateMany(
-            { receiver: userId, status: 'sent' },
-            { $set: { status: 'delivered', deliveredAt: new Date() } }
-        ).then(result => {
+            const senderIds = await Message.find({ receiver: userId, status: 'sent' }).distinct('sender');
+            if (senderIds.length === 0) return;
+
+            const result = await Message.updateMany(
+                { receiver: userId, status: 'sent' },
+                { $set: { status: 'delivered', deliveredAt: new Date() } }
+            );
+
             if (result.modifiedCount > 0) {
                 senderIds.forEach(senderId => {
                     const senderSocketId = userSocketMap[senderId.toString()];
@@ -51,8 +56,11 @@ const socketHandler = (io) => {
                     }
                 });
             }
-        });
-    });
+        } catch (error) {
+            console.error(`Error handling connect for user ${userId}:`, error);
+        }
+    };
+    handleUserConnect();
 
     socket.on("join-chat", (otherUserId) => {
       const chatRoom = [userId, otherUserId].sort().join("-");
@@ -60,6 +68,12 @@ const socketHandler = (io) => {
     });
 
     socket.on('mark-messages-read', async ({ chatUserId }) => {
+      // <<< --- CRITICAL FIX --- >>>
+      // Do not attempt to run database queries for the virtual chatbot user.
+      if (chatUserId === 'chatbot-user-id') {
+        return; 
+      }
+      
       try {
         const updateResult = await Message.updateMany(
           { receiver: userId, sender: chatUserId, status: { $ne: 'read' } },
@@ -76,21 +90,6 @@ const socketHandler = (io) => {
         console.error("Error marking messages as read:", error);
       }
     });
-    socket.on('profile-update', async (updatedUser) => {
-    try {
-        const connections = await Connection.find({ users: userId, status: 'accepted' });
-        const friendIds = connections.map(c => c.users.find(id => id.toString() !== userId).toString());
-
-        friendIds.forEach(friendId => {
-            const friendSocketId = userSocketMap[friendId];
-            if (friendSocketId) {
-                io.to(friendSocketId).emit('connection-profile-updated', updatedUser);
-            }
-        });
-    } catch (error) {
-        console.error('Error broadcasting profile a`date:', error);
-    }
-});
     
     socket.on('typing', (data) => io.to(data.receiverId).emit("user-typing", { userId }));
     socket.on('stop-typing', (data) => io.to(data.receiverId).emit("user-stop-typing", { userId }));
@@ -107,15 +106,12 @@ const socketHandler = (io) => {
             
             let message = await Message.create({ sender: senderId, receiver: receiverId, content, messageType, fileName, fileSize });
             
-            // <<< --- YEH HAI ZAROORI BADLAAV --- >>>
-            // Hum message ko wapas bhejne se pehle use 'sender' ki details ke saath populate karenge
             message = await message.populate("sender", "name profilePhotoUrl");
 
             const receiverSocketId = userSocketMap[receiverId];
             if (receiverSocketId) {
                 io.to(receiverSocketId).emit("receive-message", { ...message.toObject(), _type: 'message' });
             }
-            // Callback mein bhi populated message bhejo
             callback({ message: { ...message.toObject(), _type: 'message' } });
         } catch (error) {
             console.error(`Error in socket send-message from ${socket.userId}:`, error);
@@ -124,17 +120,8 @@ const socketHandler = (io) => {
     });
 
      socket.on("call-user", (data) => {
-        console.log("------------------------------------");
-        console.log("[Socket Event] Received 'call-user' from:", socket.user.name);
-        console.log("Data received:", data);
-
         const targetSocketId = userSocketMap[data.userToCall];
-        
-        console.log("Current userSocketMap:", userSocketMap);
-        console.log("Trying to find socket ID for user:", data.userToCall);
-
         if (targetSocketId) {
-            console.log(`SUCCESS: Found target socket ID: ${targetSocketId}. Emitting 'call-made'.`);
             io.to(targetSocketId).emit("call-made", { 
                 signal: data.signalData, 
                 from: data.from,
@@ -143,22 +130,14 @@ const socketHandler = (io) => {
         } else {
             console.error(`FAILURE: Could not find socket ID for user ${data.userToCall}. User might be offline or not connected.`);
         }
-        console.log("------------------------------------");
     });
     socket.on("answer-call", (data) => {
-        console.log("------------------------------------");
-        console.log("[Socket Event] Received 'answer-call' from:", socket.user.name);
-        console.log("Answering call to user ID:", data.to);
-        
         const targetSocketId = userSocketMap[data.to];
-        
         if (targetSocketId) {
-            console.log(`SUCCESS: Found target socket ID: ${targetSocketId}. Emitting 'call-accepted'.`);
             io.to(targetSocketId).emit("call-accepted", data.signal);
         } else {
             console.error(`FAILURE: Could not find socket ID for user ${data.to} to send answer.`);
         }
-        console.log("------------------------------------");
     });
     socket.on("hang-up", (data) => {
         const targetSocketId = userSocketMap[data.to];
@@ -189,12 +168,16 @@ const socketHandler = (io) => {
       }
     });
 
-    socket.on("disconnect", () => {
-      console.log(`User ${socket.user.name} disconnected`);
-      delete userSocketMap[userId];
-      const lastSeenTime = new Date();
-      socket.broadcast.emit("user-offline", { userId, lastSeen: lastSeenTime });
-      User.findByIdAndUpdate(userId, { isOnline: false, lastSeen: lastSeenTime }).exec();
+    socket.on("disconnect", async () => {
+      try {
+        console.log(`User ${socket.user.name} disconnected`);
+        delete userSocketMap[userId];
+        const lastSeenTime = new Date();
+        socket.broadcast.emit("user-offline", { userId, lastSeen: lastSeenTime });
+        await User.findByIdAndUpdate(userId, { isOnline: false, lastSeen: lastSeenTime });
+      } catch (error) {
+        console.error(`Error handling disconnect for user ${userId}:`, error);
+      }
     });
   });
 };
