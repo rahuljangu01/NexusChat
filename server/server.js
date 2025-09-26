@@ -7,6 +7,7 @@ const socketIo = require("socket.io");
 const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
+
 require("dotenv").config();
 
 const connectDB = require("./config/database");
@@ -22,6 +23,7 @@ const statusRoutes = require("./routes/status");
 const callRoutes = require("./routes/calls");
 
 const chatbotRoutes = require("./routes/chatbot");
+const testRoutes = require("./routes/test");
 
 const app = express();
 const server = http.createServer(app);
@@ -81,6 +83,7 @@ app.use("/api/upload", uploadRoutes);
 app.use("/api/status", statusRoutes);
 app.use("/api/calls", callRoutes);
 app.use("/api/chatbot", chatbotRoutes);
+app.use("/api/test", testRoutes);
 
 if (process.env.NODE_ENV === 'production') {
     app.use(express.static(path.join(__dirname, '../client/build')));

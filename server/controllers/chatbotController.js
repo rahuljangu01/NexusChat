@@ -1,16 +1,11 @@
-// server/controllers/chatbotController.js (UPDATED WITH DEBUGGING)
+// server/controllers/chatbotController.js (FINAL FREE VERSION - NO BILLING)
 
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require("@google/generative-ai");
 
-// Initialize Google Gemini with your API key from .env
+// Yeh .env file se seedhe GEMINI_API_KEY utha lega
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const handleMessage = async (req, res) => {
-  // <<< --- DEBUGGING STEP 1 --- >>>
-  // Check if the API key is being loaded correctly from your .env file.
-  console.log("--- New Chatbot Request ---");
-  console.log("Attempting to use Gemini API Key:", process.env.GEMINI_API_KEY ? "Key Found!" : "ERROR: KEY NOT FOUND / UNDEFINED");
-
   try {
     const { message } = req.body;
 
@@ -18,32 +13,36 @@ const handleMessage = async (req, res) => {
       return res.status(400).json({ error: "Message is required." });
     }
 
-    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+    // Hum Google AI Studio ka model use kar rahe hain, jiske liye billing nahi chahiye
+    const model = genAI.getGenerativeModel({
+        model: "gemini-1.5-flash-latest",
+        safetySettings: [
+            { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+            { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+            { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+            { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+        ],
+    });
 
     const chat = model.startChat({
         history: [
-            {
-                role: "user",
-                parts: [{ text: "You are Nexus AI, a helpful and friendly assistant integrated into the Nexus Chat application for college students. Keep your responses concise, helpful, and slightly informal." }],
-            },
-            {
-                role: "model",
-                parts: [{ text: "Got it! I'm Nexus AI, ready to help the students of this college. How can I assist you today?" }],
-            },
+            { role: "user", parts: [{ text: "You are Nexus AI..." }] },
+            { role: "model", parts: [{ text: "Got it! I'm Nexus AI..." }] },
         ],
     });
 
     const result = await chat.sendMessage(message);
-    const botResponse = await result.response;
-    const text = botResponse.text();
-    
-    console.log("Successfully got a reply from Gemini:", text);
+    const response = result.response;
+
+    if (!response.candidates || response.candidates.length === 0 || !response.text()) {
+        return res.json({ reply: "I can't respond to that. Let's talk about something else!" });
+    }
+
+    const text = response.text();
     res.json({ reply: text });
 
   } catch (error) {
-    // <<< --- DEBUGGING STEP 2 --- >>>
-    // Log the FULL error from Google's library to see the real problem.
-    console.error("!!! FULL ERROR FROM GOOGLE GEMINI API:", error);
+    console.error("Error with Google AI Studio API:", error);
     res.status(500).json({ error: "Sorry, I'm having trouble thinking right now. Please try again later." });
   }
 };
