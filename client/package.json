@@ -65,7 +65,12 @@
     "stream-browserify": "^3.0.0",
     "tailwind-merge": "^1.14.0",
     "vaul": "^1.1.2",
-    "web-vitals": "^2.1.4"
+    "web-vitals": "^2.1.4",
+    "workbox-core": "^7.3.0",
+    "workbox-expiration": "^7.3.0",
+    "workbox-precaching": "^7.3.0",
+    "workbox-routing": "^7.3.0",
+    "workbox-strategies": "^7.3.0"
   },
   "scripts": {
     "start": "react-app-rewired start",

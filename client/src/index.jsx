@@ -8,6 +8,8 @@ import { store } from './store/store';
 import { getCurrentUser } from './store/slices/authSlice'; // <-- IMPORT KAREIN
 import App from './App';
 import './index.css';
+import * as serviceWorkerRegistration from './serviceWorkerRegistration';
+
 
 // <<< --- UPDATE YAHAN HAI --- >>>
 // App render hone se pehle hi hum user ka data fetch kar lenge
@@ -25,3 +27,5 @@ root.render(
     </Provider>
   </React.StrictMode>
 );
+
+serviceWorkerRegistration.register();
